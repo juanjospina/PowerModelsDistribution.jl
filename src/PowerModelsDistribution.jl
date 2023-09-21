@@ -28,6 +28,7 @@ module PowerModelsDistribution
     import LinearAlgebra: diagm, factorize
     import Statistics: mean, std
     import SparseArrays: spzeros
+    import SparseArrays as _SP
 
 
     const _IM = InfrastructureModels
@@ -69,6 +70,7 @@ module PowerModelsDistribution
     include("data_model/transformations/eng2math.jl")
     include("data_model/transformations/math2eng.jl")
     include("data_model/transformations/utils.jl")
+    include("data_model/transformations/eng2math_admittance.jl")
 
     include("core/data.jl")
     include("core/ref.jl")
@@ -77,6 +79,8 @@ module PowerModelsDistribution
     include("core/constraint.jl")
     include("core/objective.jl")
     include("core/solution.jl")
+    include("core/admittance_matrix.jl")
+    include("core/solution_admittance.jl")
 
 
     include("form/acp.jl")
@@ -119,6 +123,7 @@ module PowerModelsDistribution
     include("data_model/transformations/kron.jl")
     include("data_model/transformations/initialization.jl")
     include("data_model/units.jl")
+    include("data_model/components_admittance.jl")
 
     include("prob/common.jl")
     include("prob/mld.jl")
@@ -131,6 +136,7 @@ module PowerModelsDistribution
     include("prob/debug.jl")
     include("prob/test.jl")
     include("prob/osw.jl")
+    include("prob/pf_admittance.jl")
 
     include("core/export.jl")
 end
