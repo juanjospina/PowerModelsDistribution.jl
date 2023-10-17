@@ -116,7 +116,7 @@ function populate_bus_voltages!(data::Dict{String,Any})
         f_bus = transformer["f_bus"]
         t_bus = transformer["t_bus"]
         if haskey(transformer, "tm_nom")
-            transformer["dss"]["phases"] == 3 ? multi = 1/sqrt(3) : multi = 1
+            transformer["phases"] == 3 ? multi = 1/sqrt(3) : multi = 1
             if !haskey(data["bus"][string(f_bus)], "vbase")
                 data["bus"][string(f_bus)]["vbase"] = transformer["tm_nom"][1]*multi
             end
@@ -178,7 +178,7 @@ function correct_grounds!(data::Dict{String,Any})
     for (i, transformer) in data["transformer"]
         for (i,config) in enumerate(transformer["configuration"])
             if config == WYE
-                if occursin(".1.2.3.0", transformer["dss"]["buses"][i])
+                if occursin(".1.2.3.0", transformer["buses"][i])
                     if i == 2
                         transformer["t_connections"] = [1,2,3,4]
                         data["bus"][string(transformer["t_bus"])]["terminals"] = [1,2,3,4]

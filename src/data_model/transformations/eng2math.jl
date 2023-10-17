@@ -502,6 +502,7 @@ function _map_eng2math_transformer!(data_math::Dict{String,<:Any}, data_eng::Dic
                     "sm_ub"         => get(eng_obj, "sm_ub", Inf),
                     "cm_ub"         => get(eng_obj, "cm_ub", Inf),
                     "status"        => eng_obj["status"] == DISABLED ? 0 : 1,
+                    "phases"        => get(eng_obj, "phases", Inf),
                     "index"         => length(data_math["transformer"])+1
                 )
 

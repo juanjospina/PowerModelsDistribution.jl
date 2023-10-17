@@ -93,7 +93,9 @@ function _map_eng2math_mc_transformer_admittance!(data_math::Dict{String,<:Any},
     )
     if haskey(data_math, "transformer")
         for (name, transformer) in data_math["transformer"]
-            if transformer["dss"]["phases"] == 3
+        @info "Transformer name: $(name)"
+        @info "Transformer MATH data: $(transformer)"
+            if transformer["phases"] == 3
                 z = sum(transformer["rw"]) + 1im .* transformer["xsc"][1]
                 z_1volt= z * 3/transformer["sm_nom"][1]/1000
                 z_b = [z_1volt 0 0;0 z_1volt 0;0 0 z_1volt]
@@ -152,7 +154,7 @@ function _map_eng2math_mc_transformer_admittance!(data_math::Dict{String,<:Any},
                     p_matrix[8,8] += 3*shunt
                 end
 
-            elseif transformer["dss"]["phases"] == 1
+            elseif transformer["phases"] == 1
                 z = sum(transformer["rw"]) + 1im .* transformer["xsc"][1]
                 z_1volt= z * 1/transformer["sm_nom"][1]/1000
                 b = [1 ;-1]

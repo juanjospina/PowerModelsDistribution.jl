@@ -102,9 +102,9 @@ function add_mc_transformer_p_matrix!(data::Dict{String,<:Any}, admit_matrix::Ma
                 t_bus = transformer["t_bus"]
                 for (_j, j) in enumerate(transformer["t_connections"])
                     if haskey(data["admittance_map"], (t_bus, j))
-                        if transformer["dss"]["phases"] == 3
+                        if transformer["phases"] == 3
                             admit_matrix[data["admittance_map"][(f_bus, i)], data["admittance_map"][(t_bus, j)]] += transformer["p_matrix"][_i,_j+4]
-                        elseif transformer["dss"]["phases"] == 1
+                        elseif transformer["phases"] == 1
                             admit_matrix[data["admittance_map"][(f_bus, i)], data["admittance_map"][(t_bus, j)]] += transformer["p_matrix"][_i,_j+2]
                         end
                     end
@@ -116,9 +116,9 @@ function add_mc_transformer_p_matrix!(data::Dict{String,<:Any}, admit_matrix::Ma
             if haskey(data["admittance_map"], (t_bus, i))
                 for (_j, j) in enumerate(transformer["t_connections"])
                     if haskey(data["admittance_map"], (t_bus, j))
-                        if transformer["dss"]["phases"] == 3
+                        if transformer["phases"] == 3
                             admit_matrix[data["admittance_map"][(t_bus, i)], data["admittance_map"][(t_bus, j)]] += transformer["p_matrix"][_i+4,_j+4]
-                        elseif transformer["dss"]["phases"] == 1
+                        elseif transformer["phases"] == 1
                             admit_matrix[data["admittance_map"][(t_bus, i)], data["admittance_map"][(t_bus, j)]] += transformer["p_matrix"][_i+2,_j+2]
                         end
                     end
@@ -126,9 +126,9 @@ function add_mc_transformer_p_matrix!(data::Dict{String,<:Any}, admit_matrix::Ma
                 f_bus = transformer["f_bus"]
                 for (_j, j) in enumerate(transformer["f_connections"])
                     if haskey(data["admittance_map"], (f_bus, j))
-                        if transformer["dss"]["phases"] == 3
+                        if transformer["phases"] == 3
                             admit_matrix[data["admittance_map"][(t_bus, i)], data["admittance_map"][(f_bus, j)]] += transformer["p_matrix"][_i+4,_j]
-                        elseif transformer["dss"]["phases"] == 1
+                        elseif transformer["phases"] == 1
                             admit_matrix[data["admittance_map"][(t_bus, i)], data["admittance_map"][(f_bus, j)]] += transformer["p_matrix"][_i+2,_j]
                         end
                     end
