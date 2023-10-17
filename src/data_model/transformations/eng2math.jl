@@ -1,15 +1,15 @@
 "items that are mapped one-to-one from engineering to math models"
 const _1to1_maps = Dict{String,Vector{String}}(
     "bus" => ["vm", "va", "vm_start", "va_start", "terminals", "phases", "neutral", "vm_pn_lb", "vm_pn_ub", "vm_pp_lb", "vm_pp_ub", "vm_ng_ub", "dss", "vuf_ub", "vm_pair_lb", "vm_pair_ub"],
-    "line" => ["f_connections", "t_connections", "dss"],
-    "transformer" => ["f_connections", "t_connections", "dss"],
+    "line" => ["f_connections", "t_connections", "phases", "dss"],
+    "transformer" => ["f_connections", "t_connections", "phases", "dss"],
     "switch" => ["status", "f_connections", "t_connections", "dss"],
-    "shunt" => ["status", "dispatchable", "gs", "bs", "connections", "dss"],
-    "load" => ["model", "configuration", "connections", "dispatchable", "status", "dss"],
-    "generator" => ["configuration", "connections", "dss"],
-    "solar" => ["configuration", "connections", "dss"],
-    "storage" => ["status", "energy", "configuration", "connections", "dss"],
-    "voltage_source" => ["configuration", "connections", "dss"],
+    "shunt" => ["status", "dispatchable", "gs", "bs", "connections", "phases", "dss"],
+    "load" => ["model", "configuration", "connections", "dispatchable", "status", "phases", "dss"],
+    "generator" => ["configuration", "connections", "phases", "dss"],
+    "solar" => ["configuration", "connections", "phases", "dss"],
+    "storage" => ["status", "energy", "configuration", "connections", "phases", "dss"],
+    "voltage_source" => ["configuration", "connections", "phases", "dss"],
 )
 
 "list of nodal type elements in the engineering model"
