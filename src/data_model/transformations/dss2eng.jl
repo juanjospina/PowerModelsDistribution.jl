@@ -95,6 +95,7 @@ function _dss2eng_load!(data_eng::Dict{String,<:Any}, data_dss::OpenDssDataModel
             "connections" => connections,
             "dispatchable" => NO,
             "source_id" => "load.$id",
+            "phases" => nphases,
             "status" => dss_obj["enabled"]
         )
 
@@ -149,6 +150,7 @@ function _dss2eng_capacitor!(data_eng::Dict{String,<:Any}, data_dss::OpenDssData
             "model" => CAPACITOR,
             "dispatchable" => NO,
             "status" => dss_obj["enabled"],
+            "phases" => nphases,
             "source_id" => "capacitor.$id",
         )
 
@@ -237,6 +239,7 @@ function _dss2eng_reactor!(data_eng::Dict{String,<:Any}, data_dss::OpenDssDataMo
                 "model" => REACTOR,
                 "dispatchable" => NO,
                 "status" => dss_obj["enabled"],
+                "phases" => nphases,
                 "source_id" => "reactor.$id",
             )
 
@@ -356,6 +359,7 @@ function _dss2eng_vsource!(data_eng::Dict{String,<:Any}, data_dss::OpenDssDataMo
             "connections" => _get_conductors_ordered(dss_obj["bus1"]; default=[collect(1:phases)..., 0], pad_ground=true),
             "configuration" => WYE,
             "source_id" => "vsource.$id",
+            "phases" => phases,
             "status" => dss_obj["enabled"]
         )
 
@@ -435,6 +439,7 @@ function _dss2eng_line!(data_eng::Dict{String,<:Any}, data_dss::OpenDssDataModel
             "length" => dss_obj["switch"] ? 0.001 : dss_obj["length"],
             "f_connections" => f_connections,
             "t_connections" => t_connections,
+            "phases" => nphases,
             "status" => dss_obj["enabled"],
             "source_id" => "line.$id"
         )
@@ -526,6 +531,8 @@ function _dss2eng_xfmrcode!(data_eng::Dict{String,<:Any}, data_dss::OpenDssDataM
             "noloadloss" => dss_obj["%noloadloss"] / 100,
             "cmag" => dss_obj["%imag"] / 100,
             "xsc" => nrw == 2 ? [dss_obj["xhl"] / 100] : [dss_obj["xhl"], dss_obj["xht"], dss_obj["xlt"]] ./ 100,
+            "phases" => nphases,
+            "nwindings" => nrw,
             "source_id" => "xfmrcode.$id",
         )
 
@@ -663,6 +670,8 @@ function _dss2eng_transformer!(data_eng::Dict{String,<:Any}, data_dss::OpenDssDa
         eng_obj["bus"] = Array{String, 1}(undef, shared["windings"])
         eng_obj["connections"] = Array{Array{Int, 1}, 1}(undef, shared["windings"])
         eng_obj["polarity"] = fill(1, shared["windings"])
+        eng_obj["phases"] = shared["phases"]
+        eng_obj["nwindings"] = shared["windings"]
 
         if isempty(dss_obj.xfmrcode)
             eng_obj["configuration"] = shared["conns"]
@@ -745,6 +754,7 @@ function _dss2eng_pvsystem!(data_eng::Dict{String,<:Any}, data_dss::OpenDssDataM
             "pg_ub" => fill( dss_obj["kva"]  / nphases, nphases),
             "qg_lb" => fill(-dss_obj["kvar"] / nphases, nphases),
             "qg_ub" => fill( dss_obj["kvar"] / nphases, nphases),
+            "phases" => nphases,
             # "sm_ub" => fill(dss_obj["pmpp"] / nphases, nphases), # TODO add irradiance model
             # "irradiance" => dss_obj["irradiance"],
             # "temperature" => dss_obj["temperature"],
@@ -797,6 +807,7 @@ function _dss2eng_storage!(data_eng::Dict{String,<:Any}, data_dss::OpenDssDataMo
             "qex" => dss_obj["%idlingkvar"] ./ 100.0 .* dss_obj["kwrated"], # percent of kwrated consumed as kvar
             "ps" => -dss_obj["kw"],  # PMD convention is opposite from dss
             "qs" => -dss_obj["kvar"],  # PMD convention is opposite from dss
+            "phases" => nphases,
             "status" => dss_obj["enabled"],
             "source_id" => "storage.$id",
         )
