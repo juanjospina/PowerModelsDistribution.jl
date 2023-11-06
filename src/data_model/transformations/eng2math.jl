@@ -2,7 +2,7 @@
 const _1to1_maps = Dict{String,Vector{String}}(
     "bus" => ["vm", "va", "vm_start", "va_start", "terminals", "phases", "neutral", "vm_pn_lb", "vm_pn_ub", "vm_pp_lb", "vm_pp_ub", "vm_ng_ub", "dss", "vuf_ub", "vm_pair_lb", "vm_pair_ub"],
     "line" => ["f_connections", "t_connections", "phases", "dss"],
-    "transformer" => ["f_connections", "t_connections", "phases", "dss"],
+    "transformer" => ["f_connections", "t_connections", "phases", "rw", "xsc", "sm_nom", "noloadloss", "cmag", "leadlag", "dss"],
     "switch" => ["status", "f_connections", "t_connections", "dss"],
     "shunt" => ["status", "dispatchable", "gs", "bs", "connections", "phases", "dss"],
     "load" => ["model", "configuration", "connections", "dispatchable", "status", "phases", "dss"],
@@ -502,7 +502,6 @@ function _map_eng2math_transformer!(data_math::Dict{String,<:Any}, data_eng::Dic
                     "sm_ub"         => get(eng_obj, "sm_ub", Inf),
                     "cm_ub"         => get(eng_obj, "cm_ub", Inf),
                     "status"        => eng_obj["status"] == DISABLED ? 0 : 1,
-                    "phases"        => get(eng_obj, "phases", Inf),
                     "index"         => length(data_math["transformer"])+1
                 )
 

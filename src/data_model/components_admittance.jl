@@ -140,8 +140,8 @@ function _map_eng2math_mc_transformer_admittance!(data_math::Dict{String,<:Any},
                 p_matrix = a*y_w*transpose(a)
 
                 ybase = (transformer["sm_nom"][1]/3) / (transformer["tm_nom"][2]/sqrt(3))^2 /1000
-                if haskey(transformer["dss"], "%noloadloss")
-                    shunt = (transformer["dss"]["%noloadloss"] - 1im * transformer["dss"]["%imag"])/100*ybase
+                if haskey(transformer, "noloadloss")
+                    shunt = (transformer["noloadloss"] - 1im * transformer["cmag"])*ybase
                     p_matrix[5,5] += shunt
                     p_matrix[5,8] -= shunt
                     p_matrix[6,6] += shunt

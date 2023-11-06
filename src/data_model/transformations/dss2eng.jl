@@ -672,6 +672,7 @@ function _dss2eng_transformer!(data_eng::Dict{String,<:Any}, data_dss::OpenDssDa
         eng_obj["polarity"] = fill(1, shared["windings"])
         eng_obj["phases"] = shared["phases"]
         eng_obj["nwindings"] = shared["windings"]
+        eng_obj["leadlag"] = shared["leadlag"]
 
         if isempty(dss_obj.xfmrcode)
             eng_obj["configuration"] = shared["conns"]
