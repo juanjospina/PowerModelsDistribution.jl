@@ -168,7 +168,7 @@ function _map_ravens2math_connectivity_node!(data_math::Dict{String,<:Any}, data
     for (name, ravens_obj) in connectivity_nodes
         index = length(data_math["bus"]) + 1
         math_obj = _init_math_obj_ravens("bus", name, ravens_obj, index; pass_props=pass_props)
-        
+
         # Set basic bus properties
         math_obj["bus_i"] = index
         math_obj["source_id"] = "bus.$name"
@@ -207,20 +207,20 @@ end
 Converts ravens conductors (e.g., ACLineSegments) into mathematical branches.
 """
 function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens::Dict{String,<:Any}; pass_props::Vector{String}=String[])
-    conductors = get(data_ravens, ["PowerSystemResource", "Equipment", "ConductingEquipment", "Conductor", "ACLineSegment"], Dict{Any,Dict{String,Any}}())
+    conductors = data_ravens["PowerSystemResource"]["Equipment"]["ConductingEquipment"]["Conductor"]
 
-    for (name, ravens_obj) in conductors
+    for (name, ravens_obj) in get(conductors, "ACLineSegment", Dict{Any,Dict{String,Any}}())
         math_obj = _init_math_obj_ravens("ac_line_segment", name, ravens_obj, length(data_math["branch"]) + 1; pass_props=pass_props)
 
         nphases = length(ravens_obj["ACLineSegment.ACLineSegmentPhase"])
         terminals = ravens_obj["ConductingEquipment.Terminals"]
-        
+
         f_node = replace(split(terminals[1]["Terminal.ConnectivityNode"], "::")[2], "'" => "")
         t_node = replace(split(terminals[2]["Terminal.ConnectivityNode"], "::")[2], "'" => "")
-        
+
         math_obj["f_bus"] = data_math["bus_lookup"][f_node]
         math_obj["t_bus"] = data_math["bus_lookup"][t_node]
-        
+
         phase_map = Dict("SinglePhaseKind.A" => 1, "SinglePhaseKind.B" => 2, "SinglePhaseKind.C" => 3)
         bus_terminals = nphases >= 3 ? collect(1:nphases) : [phase_map[phase["ACLineSegmentPhase.phase"]] for phase in ravens_obj["ACLineSegment.ACLineSegmentPhase"]]
 
@@ -285,12 +285,12 @@ end
 Converts ravens load components into mathematical load components.
 """
 function _map_ravens2math_energy_consumer!(data_math::Dict{String,<:Any}, data_ravens::Dict{String,<:Any}; pass_props::Vector{String}=String[])
-    energy_consumers = get(data_ravens, ["PowerSystemResource", "Equipment", "ConductingEquipment", "EnergyConnection", "EnergyConsumer"], Dict{Any,Dict{String,Any}}())
+    conducting_equipment = data_ravens["PowerSystemResource"]["Equipment"]["ConductingEquipment"]["EnergyConnection"]
     power_scale_factor = data_math["settings"]["power_scale_factor"]
     voltage_scale_factor = data_math["settings"]["voltage_scale_factor"]
     voltage_scale_factor_sqrt3 = voltage_scale_factor * sqrt(3)
 
-    for (name, ravens_obj) in energy_consumers
+    for (name, ravens_obj) in get(conducting_equipment, "EnergyConsumer", Dict{Any,Dict{String,Any}}())
         math_obj = _init_math_obj_ravens("energy_consumer", name, ravens_obj, length(data_math["load"]) + 1; pass_props=pass_props)
 
         # Set the load bus based on connectivity node
@@ -392,11 +392,11 @@ end
 Converts ravens voltage sources into mathematical generators and (if needed) impedance branches to represent the loss model.
 """
 function _map_ravens2math_energy_source!(data_math::Dict{String,<:Any}, data_ravens::Dict{String,<:Any}; pass_props::Vector{String}=String[])
-    energy_sources = get(data_ravens["PowerSystemResource"]["Equipment"]["ConductingEquipment"]["EnergyConnection"], "EnergySource", Dict{String,Any}())
+    conducting_equipment = data_ravens["PowerSystemResource"]["Equipment"]["ConductingEquipment"]["EnergyConnection"]
     voltage_scale_factor = data_math["settings"]["voltage_scale_factor"]
     voltage_scale_factor_sqrt3 = voltage_scale_factor * sqrt(3)
 
-    for (name, ravens_obj) in energy_sources
+    for (name, ravens_obj) in get(conducting_equipment, "EnergySource", Dict{Any,Dict{String,Any}}())
         math_obj = _init_math_obj_ravens("energy_source", name, ravens_obj, length(data_math["gen"]) + 1; pass_props=pass_props)
         math_obj["name"] = "_virtual_gen.energy_source.$name"
 
