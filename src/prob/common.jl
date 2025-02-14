@@ -117,6 +117,12 @@ function instantiate_mc_model(
     end
 
     # @info "$(data["transformer"])"
+
+    # for i in data["transformer"]
+    #     @info "$(i)"
+
+    # end
+
     # DEFINIDOEN_instantiate_mc_model
 
     return _IM.instantiate_model(
@@ -158,6 +164,11 @@ function instantiate_mc_model_ravens(
         )
 
     # @info "$(data["transformer"])"
+
+    # for i in data["transformer"]
+    #     @info "$(i)"
+
+    # end
     # DEFINIDOEN_instantiate_mc_model_ravens
 
     return _IM.instantiate_model(
