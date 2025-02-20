@@ -550,82 +550,17 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
 
             # Get phases of the TransformerTank/Bank
             tanks = ravens_obj["PowerTransformer.TransformerTank"]
-            ntanks = length(tanks)
-            # nphases = ntanks # TODO: NEEDED?
-
-            # connections
-            connections_tanks =  Vector{Vector{Vector{Int64}}}(undef, ntanks)
-
-            # from-and-to nodes
-            frto_nodes = Vector{Vector{String}}(undef, ntanks)
-
-            # Tanks data
-            tanks_data = Vector{Vector{Dict{String,Any}}}(undef, ntanks)
-            tank_number = 1
-
-            for tank in tanks
-
-                # Get nrw: number of windings
-                wdgs = tank["TransformerTank.TransformerTankEnd"]
-                nrw = length(wdgs)
-
-                # wdg data vector
-                wdg_data = Vector{Dict{String,Any}}(undef, nrw)
-
-                # connections wdgs vector
-                connections_wdgs =  Vector{Vector{Int64}}(undef, nrw)
-
-                # nodes
-                frto_nodes_wdgs =  Vector{String}(undef, nrw)
-
-                for wdg in wdgs
-
-                    # wdg phasecode
-                    wdg_terminals = wdg["ConductingEquipment.Terminals"][1]
-                    wdg_phasecode = wdg_terminals["Terminal.phases"]
-
-                    # wdg endNumber
-                    wdg_endNumber = wdg["TransformerEnd.endNumber"]
-
-                    # from-and-to-nodes for wdg
-                    frto_nodes_wdgs[wdg_endNumber] = _extract_name(wdg_terminals["Terminal.ConnectivityNode"])
-
-                    # Connections (based on _phasecode_map)
-                    if haskey(_phasecode_map, wdg_phasecode)
-                        connections_wdgs[wdg_endNumber] = _phasecode_map[wdg_phasecode]
-                    else
-                        @error("PhaseCode not supported yet!")
-                    end
-
-                    # Assign tank number based on phase
-                    wdg_data[wdg_endNumber] = deepcopy(wdg)
-
-                end
-
-                # Check that it cannot be greater than the total number of tanks
-                @assert tank_number <= ntanks
-                frto_nodes[tank_number] = frto_nodes_wdgs
-                connections_tanks[tank_number] = connections_wdgs
-                tanks_data[tank_number] = wdg_data
-                tank_number += 1
-
-            end
-
+            connections = []
 
             # Create a transformer for each tank
-            for tank_id in 1:1length(tanks_data)
+            for tank_id in 1:1length(tanks)
 
-                # winding info
-                wdgs_data = tanks_data[tank_id]
-
-                # Tank Asset name
-                tank_asset_name = _extract_name(tanks[tank_id]["PowerSystemResource.AssetDatasheet"])
-
-                # Tank Asset Data
-                tank_asset_data = data_ravens["AssetInfo"]["PowerTransformerInfo"][tank_asset_name]
-
-                # Num of wdgs
-                nrw = length(wdgs_data)
+                tank_data = tanks[tank_id]   # tank data
+                wdgs_data = tank_data["TransformerTank.TransformerTankEnd"]     # wdgs data
+                tank_asset_name = _extract_name(tanks[tank_id]["PowerSystemResource.AssetDatasheet"])   # tank asset name
+                tank_asset_data = data_ravens["AssetInfo"]["PowerTransformerInfo"][tank_asset_name]     # tank asset data
+                nrw = length(tank_data["TransformerTank.TransformerTankEnd"])   # number of windings
+                nphases = 0 # init nphases var
 
                 # wdgs data vectors
                 vnom_wdgs = Vector{Float64}(undef, nrw)
@@ -633,17 +568,26 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                 leak_impedance = Vector{Float64}(undef, nrw)
                 resistance = Vector{Float64}(undef, nrw)
 
-                # nphases
-                nphases = 0
-
                 for wdg_id in 1:1:nrw
 
-                    node = frto_nodes[tank_id][wdg_id]
+                    wdg_terminals = wdgs_data[wdg_id]["ConductingEquipment.Terminals"][1]
+                    wdg_phasecode = wdg_terminals["Terminal.phases"]
+                    wdg_endNumber = wdgs_data[wdg_id]["TransformerEnd.endNumber"]
+
+                    # from-and-to-nodes for wdg
+                    node = _extract_name(wdg_terminals["Terminal.ConnectivityNode"])
                     bus = data_math["bus_lookup"][node]
-                    conns = connections_tanks[tank_id][wdg_id]
-                    nphases = length(conns)
+
+                    # Connections (based on _phasecode_map)
+                    if haskey(_phasecode_map, wdg_phasecode)
+                        connections = _phasecode_map[wdg_phasecode]
+                    else
+                        @error("PhaseCode not supported yet!")
+                    end
+
+                    nphases = length(connections)
                     if !(haskey(data_math["bus"][string(bus)], "terminals"))
-                        data_math["bus"][string(bus)]["terminals"] = conns
+                        data_math["bus"][string(bus)]["terminals"] = connections
                         data_math["bus"][string(bus)]["vmin"] = fill(0.0, nphases)
                         data_math["bus"][string(bus)]["vmax"] = fill(Inf, nphases)
                     end
@@ -711,7 +655,7 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                 status = status == "true" ? 1 : 0
 
                 # Build loss model
-                transformer_t_bus_w = _build_loss_model!(data_math, name, to_map, r_s, z_sc, y_sh, connections_tanks[tank_id][1]; nphases=dims, status=status)
+                transformer_t_bus_w = _build_loss_model!(data_math, name, to_map, r_s, z_sc, y_sh, connections; nphases=dims, status=status)
 
                 # Mathematical model for transformer
                 for wdg_id in 1:1:nrw
@@ -739,13 +683,13 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
 
                     # Transformer Object
                     transformer_2wa_obj = Dict{String,Any}(
-                        "name"          => "_virtual_transformer.$name.$wdg_id.$(connections_tanks[tank_id][wdg_id])",
-                        "source_id"     => "_virtual_transformer.transformer.$name.$wdg_id.$(connections_tanks[tank_id][wdg_id])",
+                        "name"          => "_virtual_transformer.$name.$wdg_id.$(connections)",
+                        "source_id"     => "_virtual_transformer.transformer.$name.$wdg_id.$(connections)",
                         "f_bus"         => data_math["bus_lookup"][f_node_wdgterm],
                         "t_bus"         => transformer_t_bus_w[wdg_id],
                         "tm_nom"        => tm_nom,
-                        "f_connections" => connections_tanks[tank_id][wdg_id],
-                        "t_connections" => connections_tanks[tank_id][wdg_id],
+                        "f_connections" => connections,
+                        "t_connections" => connections,
                         "configuration" => configuration,
                         "polarity"      => polarity[wdg_id],
                         "tm_set"        => tm_set[wdg_id],
