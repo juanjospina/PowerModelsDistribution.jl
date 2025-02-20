@@ -116,11 +116,11 @@ function instantiate_mc_model(
         )
     end
 
-    # @info "$(data["transformer"])"
+    # @info "$(data["bus"])"
 
-    # for i in data["transformer"]
+    # for i in data["bus"]
+    #     @info "+++++++++++++++++++++++++++++++++++++++++++++++++++++"
     #     @info "$(i)"
-
     # end
 
     # DEFINIDOEN_instantiate_mc_model
@@ -163,12 +163,13 @@ function instantiate_mc_model_ravens(
             make_pu_extensions=make_pu_extensions,
         )
 
-    # @info "$(data["transformer"])"
+    # @info "$(data["bus"])"
 
-    # for i in data["transformer"]
+    # for i in data["bus"]
+    #     @info "+++++++++++++++++++++++++++++++++++++++++++++++++++++"
     #     @info "$(i)"
-
     # end
+
     # DEFINIDOEN_instantiate_mc_model_ravens
 
     return _IM.instantiate_model(
