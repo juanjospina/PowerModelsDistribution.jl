@@ -389,6 +389,9 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
             f_node = ""
             t_node = ""
 
+            # configurations
+            wdgs_confs = Vector{ConnConfig}(undef, nrw)
+
             for wdg in wdgs
 
                 # wdg phasecode
@@ -418,6 +421,16 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                         data_math["bus"][string(f_bus)]["vmin"] = fill(0.0, nphases)
                         data_math["bus"][string(f_bus)]["vmax"] = fill(Inf, nphases)
                     end
+
+                    # wdgs configurations
+                    if wdg["PowerTransformerEnd.connectionKind"] == "WindingConnection.Y"
+                        wdgs_confs[wdg_endNumber] = WYE
+                    elseif wdg["PowerTransformerEnd.connectionKind"] == "WindingConnection.D"
+                        wdgs_confs[wdg_endNumber] = DELTA
+                    else
+                        @error("PowerTransformer ConnectionKind not supported yet!")
+                    end
+
                 # Get Winding 2 information & create bus
                 elseif wdg_endNumber == 2
                     wdg2_data = wdg
@@ -427,6 +440,15 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                         data_math["bus"][string(t_bus)]["terminals"] = connections[wdg_endNumber]
                         data_math["bus"][string(t_bus)]["vmin"] = fill(0.0, nphases)
                         data_math["bus"][string(t_bus)]["vmax"] = fill(Inf, nphases)
+                    end
+
+                    # wdgs configurations
+                    if wdg["PowerTransformerEnd.connectionKind"] == "WindingConnection.Y"
+                        wdgs_confs[wdg_endNumber] = WYE
+                    elseif wdg["PowerTransformerEnd.connectionKind"] == "WindingConnection.D"
+                        wdgs_confs[wdg_endNumber] = DELTA
+                    else
+                        @error("PowerTransformer ConnectionKind not supported yet!")
                     end
                 end
             end
@@ -487,17 +509,20 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
             for w in 1:nrw
                 # 2-WINDING TRANSFORMER
 
-                # Configuration
-                if wdgs[w]["PowerTransformerEnd.connectionKind"] == "WindingConnection.Y"
-                    configuration = WYE
-                elseif wdgs[w]["PowerTransformerEnd.connectionKind"] == "WindingConnection.D"
-                    configuration = DELTA
-                else
-                    @error("PowerTransformer ConnectionKind not supported yet!")
+                # correct polarity and connections
+                if w>1
+                    if wdgs_confs[1] == DELTA && wdgs_confs[w] == WYE
+                        polarity[w] = -1
+                        connections[w] = _barrel_roll(connections[w][1:end], 1)
+                    end
+                    if wdgs_confs[1] == WYE && wdgs_confs[w] == DELTA
+                        polarity[w] = -1
+                        connections[w] = _barrel_roll(connections[w], -1)
+                    end
                 end
 
                 # make virtual bus and mark it for reduction
-                tm_nom = configuration==DELTA ? wdgs[w]["PowerTransformerEnd.ratedU"]*sqrt(3)/voltage_scale_factor : wdgs[w]["PowerTransformerEnd.ratedU"]/voltage_scale_factor
+                tm_nom = wdgs_confs[w]==DELTA ? wdgs[w]["PowerTransformerEnd.ratedU"]*sqrt(3)/voltage_scale_factor : wdgs[w]["PowerTransformerEnd.ratedU"]/voltage_scale_factor
 
                 # Get correct f_node for winding
                 wdg_term = wdgs[w]["ConductingEquipment.Terminals"][1]
@@ -511,8 +536,8 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                     "t_bus"         => transformer_t_bus_w[w],
                     "tm_nom"        => tm_nom,
                     "f_connections" => connections[w],
-                    "t_connections" => connections[w],
-                    "configuration" => configuration,
+                    "t_connections" => connections[1],
+                    "configuration" => wdgs_confs[w],
                     "polarity"      => polarity[w],
                     "tm_set"        => tm_set[w],
                     "tm_fix"        => tm_fix[w],
@@ -550,10 +575,12 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
 
             # Get phases of the TransformerTank/Bank
             tanks = ravens_obj["PowerTransformer.TransformerTank"]
-            connections = []
 
             # Create a transformer for each tank
             for tank_id in 1:1length(tanks)
+
+                # per tank windings connections
+                connections = Vector{Int64}[]
 
                 tank_data = tanks[tank_id]   # tank data
                 wdgs_data = tank_data["TransformerTank.TransformerTankEnd"]     # wdgs data
@@ -568,6 +595,9 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                 leak_impedance = Vector{Float64}(undef, nrw)
                 resistance = Vector{Float64}(undef, nrw)
 
+                # configurations
+                wdgs_confs = Vector{ConnConfig}(undef, nrw)
+
                 for wdg_id in 1:1:nrw
 
                     wdg_terminals = wdgs_data[wdg_id]["ConductingEquipment.Terminals"][1]
@@ -580,14 +610,15 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
 
                     # Connections (based on _phasecode_map)
                     if haskey(_phasecode_map, wdg_phasecode)
-                        connections = _phasecode_map[wdg_phasecode]
+                        wdg_connections = _phasecode_map[wdg_phasecode]
+                        push!(connections, wdg_connections)
                     else
                         @error("PhaseCode not supported yet!")
                     end
 
-                    nphases = length(connections)
+                    nphases = length(wdg_connections)
                     if !(haskey(data_math["bus"][string(bus)], "terminals"))
-                        data_math["bus"][string(bus)]["terminals"] = connections
+                        data_math["bus"][string(bus)]["terminals"] = wdg_connections
                         data_math["bus"][string(bus)]["vmin"] = fill(0.0, nphases)
                         data_math["bus"][string(bus)]["vmax"] = fill(Inf, nphases)
                     end
@@ -597,6 +628,16 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                     snom_wdgs[wdg_id] = tank_asset_data["PowerTransformerInfo.TransformerTankInfos"][tank_asset_name]["TransformerTankInfo.TransformerEndInfos"][wdg_id]["TransformerEndInfo.ratedS"]
                     leak_impedance[wdg_id] = tank_asset_data["PowerTransformerInfo.TransformerTankInfos"][tank_asset_name]["TransformerTankInfo.TransformerEndInfos"][wdg_id]["TransformerEndInfo.EnergisedEndShortCircuitTests"][1]["ShortCircuitTest.leakageImpedance"]
                     resistance[wdg_id] = tank_asset_data["PowerTransformerInfo.TransformerTankInfos"][tank_asset_name]["TransformerTankInfo.TransformerEndInfos"][wdg_id]["TransformerEndInfo.r"]
+
+                    # wdgs configurations
+                    wdg_conf =  tank_asset_data["PowerTransformerInfo.TransformerTankInfos"][tank_asset_name]["TransformerTankInfo.TransformerEndInfos"][wdg_id]["TransformerEndInfo.connectionKind"] # extract wdg conf
+                    if wdg_conf == "WindingConnection.Y" || wdg_conf == "WindingConnection.I"
+                        wdgs_confs[wdg_id] = WYE
+                    elseif wdg_conf == "WindingConnection.D"
+                        wdgs_confs[wdg_id] = DELTA
+                    else
+                        @error("PowerTransformer ConnectionKind not supported yet!")
+                    end
 
                 end
 
@@ -644,27 +685,29 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                 status = status == "true" ? 1 : 0
 
                 # Build loss model
-                transformer_t_bus_w = _build_loss_model!(data_math, name, to_map, r_s, z_sc, y_sh, connections; nphases=dims, status=status)
+                transformer_t_bus_w = _build_loss_model!(data_math, name, to_map, r_s, z_sc, y_sh, connections[1]; nphases=dims, status=status)
 
                 # Mathematical model for transformer
                 for wdg_id in 1:1:nrw
                     # 2-WINDING TRANSFORMER
 
-                    # extract wdg conf
-                    wdg_info = tank_asset_data["PowerTransformerInfo.TransformerTankInfos"][tank_asset_name]["TransformerTankInfo.TransformerEndInfos"]
-                    wdg_conf = wdg_info[wdg_id]["TransformerEndInfo.connectionKind"]
-
-                    # Configuration
-                    if wdg_conf == "WindingConnection.Y" || wdg_conf == "WindingConnection.I"
-                        configuration = WYE
-                    elseif wdg_conf == "WindingConnection.D"
-                        configuration = DELTA
-                    else
-                        @error("PowerTransformer ConnectionKind not supported yet!")
+                    # correct polarity and connections
+                    if wdg_id>1
+                        if wdgs_confs[1] == DELTA && wdgs_confs[wdg_id] == WYE
+                            polarity[wdg_id] = -1
+                            connections[wdg_id] = _barrel_roll(connections[wdg_id][1:end], 1)
+                        end
+                        if wdgs_confs[1] == WYE && wdgs_confs[wdg_id] == DELTA
+                            polarity[wdg_id] = -1
+                            connections[wdg_id] = _barrel_roll(connections[wdg_id], -1)
+                        end
                     end
 
+                    # tank asset data
+                    wdg_info = tank_asset_data["PowerTransformerInfo.TransformerTankInfos"][tank_asset_name]["TransformerTankInfo.TransformerEndInfos"]
+
                     # make virtual bus and mark it for reduction
-                    tm_nom = configuration==DELTA ? vnom_wdgs[wdg_id]*sqrt(3)/voltage_scale_factor : vnom_wdgs[wdg_id]/voltage_scale_factor
+                    tm_nom = wdgs_confs[wdg_id]==DELTA ? vnom_wdgs[wdg_id]*sqrt(3)/voltage_scale_factor : vnom_wdgs[wdg_id]/voltage_scale_factor
 
                     # Get correct f_node for winding
                     wdg_term = wdgs_data[wdg_id]["ConductingEquipment.Terminals"][1]
@@ -672,14 +715,14 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
 
                     # Transformer Object
                     transformer_2wa_obj = Dict{String,Any}(
-                        "name"          => "_virtual_transformer.$name.$wdg_id.$(connections)",
-                        "source_id"     => "_virtual_transformer.transformer.$name.$wdg_id.$(connections)",
+                        "name"          => "_virtual_transformer.$name.$wdg_id.$(connections[wdg_id])",
+                        "source_id"     => "_virtual_transformer.transformer.$name.$wdg_id.$(connections[wdg_id])",
                         "f_bus"         => data_math["bus_lookup"][f_node_wdgterm],
                         "t_bus"         => transformer_t_bus_w[wdg_id],
                         "tm_nom"        => tm_nom,
-                        "f_connections" => connections,
-                        "t_connections" => connections,
-                        "configuration" => configuration,
+                        "f_connections" => connections[wdg_id],
+                        "t_connections" => connections[1],
+                        "configuration" => wdgs_confs[wdg_id],
                         "polarity"      => polarity[wdg_id],
                         "tm_set"        => tm_set[wdg_id],
                         "tm_fix"        => tm_fix[wdg_id],
