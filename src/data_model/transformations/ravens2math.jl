@@ -452,7 +452,7 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
 
             # data is measured externally, but we now refer it to the internal side
             ratios = vnom/voltage_scale_factor
-            x_sc = x_sc./ratios[1]^2
+            x_sc = (x_sc./ratios[1]^2)./100.0
             r_s = r_s./ratios.^2
             g_sh = g_sh*ratios[1]^2
             b_sh = b_sh*ratios[1]^2
@@ -603,22 +603,11 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                 # calculate zbase in which the data is specified, and convert to SI
                 zbase = (vnom_wdgs.^2) ./ snom_wdgs
 
-                # x_sc computation
-                if nrw <= 2
-                    x_sc = (leak_impedance./zbase).*zbase[1]
-                else
-                    x_sc = Vector{Float64}(undef, nrw)
-                    for wdg_id in 1:1:nrw
-                        if wdg_id == 1
-                            x_sc[wdg_id] = (leak_impedance[wdg_id]/zbase[wdg_id])*zbase[wdg_id]
-                        else
-                            x_sc[wdg_id] = (leak_impedance[wdg_id]/zbase[wdg_id])*zbase[wdg_id-1]
-                        end
-                    end
-                end
+                # x_sc computed from leak impedance
+                x_sc = (sqrt.((leak_impedance ./ zbase).^2 - ((resistance.*100.0 ./ zbase)*2).^2)./100.0).*zbase
 
                 # rs is specified with respect to each winding
-                r_s = resistance./zbase
+                r_s = resistance
 
                 # g_sh always with respect to wdg #1
                 loss = tank_asset_data["PowerTransformerInfo.TransformerTankInfos"][tank_asset_name]["TransformerTankInfo.TransformerEndInfos"][1]["TransformerEndInfo.EnergisedEndNoLoadTests"][1]["NoLoadTest.loss"]
@@ -629,7 +618,7 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
 
                 # data is measured externally, but we now refer it to the internal side
                 ratios = vnom_wdgs/voltage_scale_factor
-                x_sc = x_sc./ratios.^2
+                x_sc = (x_sc./ratios.^2)
                 r_s = r_s./ratios.^2
                 g_sh = g_sh*ratios[1]^2
                 b_sh = b_sh*ratios[1]^2
@@ -806,7 +795,8 @@ function _map_ravens2math_energy_consumer!(data_math::Dict{String,<:Any}, data_r
         # Set the nominal voltage
         base_voltage_ref = _extract_name(ravens_obj["ConductingEquipment.BaseVoltage"])
         base_voltage = data_ravens["BaseVoltage"][base_voltage_ref]["BaseVoltage.nominalVoltage"]
-        math_obj["vnom_kv"] = (base_voltage / voltage_scale_factor) / (sqrt(3) / 2)
+        # math_obj["vnom_kv"] = (base_voltage / voltage_scale_factor) / (sqrt(3) / 2)
+        math_obj["vnom_kv"] = (base_voltage / voltage_scale_factor_sqrt3)
 
         # Set voltage bounds for the bus connected
         bus_info = string(math_obj["load_bus"])
