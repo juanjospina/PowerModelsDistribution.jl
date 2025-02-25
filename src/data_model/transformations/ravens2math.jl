@@ -549,14 +549,11 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
 
         elseif haskey(ravens_obj, "PowerTransformer.TransformerTank")
 
-            # Get phases of the TransformerTank/Bank
+            # Get tanks data
             tanks = ravens_obj["PowerTransformer.TransformerTank"]
 
             # Create a transformer for each tank
-            for tank_id in 1:1length(tanks)
-
-                # per tank windings connections
-                connections = Vector{Int64}[]
+            for tank_id in 1:length(tanks)
 
                 tank_data = tanks[tank_id]   # tank data
                 wdgs_data = tank_data["TransformerTank.TransformerTankEnd"]     # wdgs data
@@ -564,6 +561,9 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                 tank_asset_data = data_ravens["AssetInfo"]["PowerTransformerInfo"][tank_asset_name]     # tank asset data
                 nrw = length(tank_data["TransformerTank.TransformerTankEnd"])   # number of windings
                 nphases = 0 # init nphases var
+
+                # per tank windings connections
+                connections = Vector{Vector{Int64}}(undef, nrw)
 
                 # wdgs data vectors
                 vnom_wdgs = Vector{Float64}(undef, nrw)
@@ -574,7 +574,14 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                 # configurations
                 wdgs_confs = Vector{ConnConfig}(undef, nrw)
 
-                for wdg_id in 1:1:nrw
+                # Regulator set init
+                tm_set = Vector{Vector{Float64}}(undef, nrw)
+                tm_lb = Vector{Vector{Float64}}(undef, nrw)
+                tm_ub = Vector{Vector{Float64}}(undef, nrw)
+                tm_fix = Vector{Vector{Bool}}(undef, nrw)
+                tm_step = Vector{Vector{Float64}}(undef, nrw)
+
+                for wdg_id in 1:nrw
 
                     wdg_terminals = wdgs_data[wdg_id]["ConductingEquipment.Terminals"][1]
                     wdg_phasecode = wdg_terminals["Terminal.phases"]
@@ -584,10 +591,10 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                     node = _extract_name(wdg_terminals["Terminal.ConnectivityNode"])
                     bus = data_math["bus_lookup"][node]
 
-                    # Connections (based on _phasecode_map)
+                    # connections (based on _phasecode_map)
                     if haskey(_phasecode_map, wdg_phasecode)
                         wdg_connections = _phasecode_map[wdg_phasecode]
-                        push!(connections, wdg_connections)
+                        connections[wdg_id] = wdg_connections
                     else
                         @error("PhaseCode not supported yet!")
                     end
@@ -599,20 +606,37 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                         data_math["bus"][string(bus)]["vmax"] = fill(Inf, nphases)
                     end
 
-                    # vnom and snom
-                    vnom_wdgs[wdg_id] = tank_asset_data["PowerTransformerInfo.TransformerTankInfos"][tank_asset_name]["TransformerTankInfo.TransformerEndInfos"][wdg_id]["TransformerEndInfo.ratedU"]
-                    snom_wdgs[wdg_id] = tank_asset_data["PowerTransformerInfo.TransformerTankInfos"][tank_asset_name]["TransformerTankInfo.TransformerEndInfos"][wdg_id]["TransformerEndInfo.ratedS"]
-                    leak_impedance[wdg_id] = tank_asset_data["PowerTransformerInfo.TransformerTankInfos"][tank_asset_name]["TransformerTankInfo.TransformerEndInfos"][wdg_id]["TransformerEndInfo.EnergisedEndShortCircuitTests"][1]["ShortCircuitTest.leakageImpedance"]
-                    resistance[wdg_id] = tank_asset_data["PowerTransformerInfo.TransformerTankInfos"][tank_asset_name]["TransformerTankInfo.TransformerEndInfos"][wdg_id]["TransformerEndInfo.r"]
+                    # transformer tank end info.
+                    transf_end_info = tank_asset_data["PowerTransformerInfo.TransformerTankInfos"][tank_asset_name]["TransformerTankInfo.TransformerEndInfos"]
+                    vnom_wdgs[wdg_id] = transf_end_info[wdg_id]["TransformerEndInfo.ratedU"]
+                    snom_wdgs[wdg_id] = transf_end_info[wdg_id]["TransformerEndInfo.ratedS"]
+                    leak_impedance[wdg_id] = transf_end_info[wdg_id]["TransformerEndInfo.EnergisedEndShortCircuitTests"][1]["ShortCircuitTest.leakageImpedance"]
+                    resistance[wdg_id] = transf_end_info[wdg_id]["TransformerEndInfo.r"]
 
                     # wdgs configurations
-                    wdg_conf =  tank_asset_data["PowerTransformerInfo.TransformerTankInfos"][tank_asset_name]["TransformerTankInfo.TransformerEndInfos"][wdg_id]["TransformerEndInfo.connectionKind"] # extract wdg conf
+                    wdg_conf = transf_end_info[wdg_id]["TransformerEndInfo.connectionKind"] # extract wdg conf
                     if wdg_conf == "WindingConnection.Y" || wdg_conf == "WindingConnection.I"
                         wdgs_confs[wdg_id] = WYE
                     elseif wdg_conf == "WindingConnection.D"
                         wdgs_confs[wdg_id] = DELTA
                     else
                         @error("PowerTransformer ConnectionKind not supported yet!")
+                    end
+
+                    # TODO: RatioTapChanger
+                    if haskey(wdgs_data[wdg_id], "TransformerEnd.RatioTapChanger")
+                        # TODO: default for now, but needs to be corrected!
+                        tm_set[wdg_id] = fill(1.0, nphases)
+                        tm_lb[wdg_id] = fill(0.9, nphases)
+                        tm_ub[wdg_id] = fill(1.1, nphases)
+                        tm_fix[wdg_id] = ones(Bool, nphases)
+                        tm_step[wdg_id] = fill(1/32, nphases)
+                    else # default
+                        tm_set[wdg_id] = fill(1.0, nphases)
+                        tm_lb[wdg_id] = fill(0.9, nphases)
+                        tm_ub[wdg_id] = fill(1.1, nphases)
+                        tm_fix[wdg_id] = ones(Bool, nphases)
+                        tm_step[wdg_id] = fill(1/32, nphases)
                     end
 
                 end
@@ -644,16 +668,10 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                 y_sh = g_sh + im*b_sh
                 z_sc = Dict([(key, im*x_sc[i]) for (i,key) in enumerate([(i,j) for i in 1:nrw for j in i+1:nrw])])
 
-                # TODO: RatioTapChanger - How to get wdg_Data correctly?
-                tm_set = Vector{Vector{Float64}}(fill(fill(1.0, nphases), nrw))
-                tm_lb = Vector{Vector{Float64}}(fill(fill(0.9, nphases), nrw))
-                tm_ub = Vector{Vector{Float64}}(fill(fill(1.1, nphases), nrw))
-                tm_fix = Vector{Vector{Bool}}(fill(ones(Bool, nphases), nrw))
-                tm_step = Vector{Vector{Float64}}(fill(fill(1/32, nphases), nrw))
-
+                # dimensions
                 dims = length(tm_set[1])
 
-                # TODO: Polarity
+                # TODO: polarity
                 polarity = fill(1, nrw)
 
                 # Status
