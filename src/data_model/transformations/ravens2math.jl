@@ -382,19 +382,15 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
 
                     dcable[i] = radius[i] * 2.0
 
-                    # TODO: WireInfo gmr is missing.
-                    # gmr[i] = get(wireinfo_data, "WireInfo.gmr", NaN)
-                    gmr[i] = radius[i] * 0.778        # gmr
+                    gmr[i] = get(wireinfo_data, "WireInfo.gmr", radius[i] * 0.778)
 
                     if wireinfo_data["Ravens.cimObjectType"] == "OverheadWireInfo"
                         rac[i] = get(wireinfo_data, "WireInfo.rAC25", NaN)
-                        @assert rac[i] != NaN "WireInfo AC25 resistance is not found! using NaN. Revise data."
+                        @assert rac[i] != NaN "WireInfo AC25 resistance is not found! using NaN. Revise input data."
                         rdc[i] = rac[i] / 1.02
                     elseif wireinfo_data["Ravens.cimObjectType"] == "ConcentricNeutralCableInfo"
                         rdc[i] = get(wireinfo_data, "WireInfo.rDC20", NaN)
-                        # TODO: remove / only for testing and not get ERROR!
-                        rdc[i] = 1.0
-                        @assert rdc[i] != NaN "WireInfo rDC20 resistance is not found! using NaN. Revise data."
+                        @assert rdc[i] != NaN "WireInfo rDC20 resistance is not found! using NaN. Revise input data."
                         rac[i] = rdc[i] * 1.02
                     else
                         @error("Cable type not supported. Resistances (AC or DC) not found!")
@@ -404,9 +400,7 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
                     rstrand[i] = get(wireinfo_data, "ConcentricNeutralCableInfo.neutralStrandRDC20", NaN)
                     nstrand[i] = get(wireinfo_data, "ConcentricNeutralCableInfo.neutralStrandCount", NaN)
                     dstrand[i] = get(wireinfo_data, "ConcentricNeutralCableInfo.nuetralStrandRadius", NaN) * 2.0
-                    # TODO: missing correct spelling / needs fix on feeder data.
-                    # gmrstrand[i] = get(wireinfo_data, "ConcentricNeutralCableInfo.neutralStrandGmr", NaN)
-                    gmrstrand[i] = (dstrand[i]/2.0) * 0.778
+                    gmrstrand[i] = get(wireinfo_data, "ConcentricNeutralCableInfo.neutralStrandGmr", (dstrand[i]/2.0) * 0.778)
 
                     # insulation information
                     dins[i] = get(wireinfo_data, "CableInfo.diameterOverJacket", NaN)
@@ -521,6 +515,7 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
                 @info "$( math_obj["b_to"])"
                 @info "$( math_obj["g_fr"])"
                 @info "$( math_obj["g_to"])"
+
 
             end
 
