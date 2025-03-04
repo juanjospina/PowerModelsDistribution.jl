@@ -309,15 +309,219 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
             math_obj["f_connections"] = bus_terminals
             math_obj["t_connections"] = bus_terminals
 
-            impedance_name = _extract_name(ravens_obj["ACLineSegment.PerLengthImpedance"])
-            impedance_data = data_ravens["PerLengthLineParameter"]["PerLengthImpedance"]["PerLengthPhaseImpedance"][impedance_name]
-
-            math_obj["br_r"] = _impedance_conversion_ravens(impedance_data, ravens_obj, "PhaseImpedanceData.r")
-            math_obj["br_x"] = _impedance_conversion_ravens(impedance_data, ravens_obj, "PhaseImpedanceData.x")
-
+            # System frequency
             base_freq = data_math["settings"]["base_frequency"]
-            for (key, param) in [("b_fr", "PhaseImpedanceData.b"), ("b_to", "PhaseImpedanceData.b"), ("g_fr", "PhaseImpedanceData.g"), ("g_to", "PhaseImpedanceData.g")]
-                math_obj[key] = _admittance_conversion_ravens(impedance_data, ravens_obj, param)
+
+            if (haskey(ravens_obj, "ACLineSegment.PerLengthImpedance"))
+
+                impedance_name = _extract_name(ravens_obj["ACLineSegment.PerLengthImpedance"])
+                impedance_data = data_ravens["PerLengthLineParameter"]["PerLengthImpedance"]["PerLengthPhaseImpedance"][impedance_name]
+
+                math_obj["br_r"] = _impedance_conversion_ravens(impedance_data, ravens_obj, "PhaseImpedanceData.r")
+                math_obj["br_x"] = _impedance_conversion_ravens(impedance_data, ravens_obj, "PhaseImpedanceData.x")
+
+                for (key, param) in [("b_fr", "PhaseImpedanceData.b"), ("b_to", "PhaseImpedanceData.b"), ("g_fr", "PhaseImpedanceData.g"), ("g_to", "PhaseImpedanceData.g")]
+                    math_obj[key] = _admittance_conversion_ravens(impedance_data, ravens_obj, param)
+                end
+
+            elseif (haskey(ravens_obj, "ACLineSegment.WireSpacingInfo"))
+
+                # Get WireSpacingInfo
+                spacinginfo_name = _extract_name(ravens_obj["ACLineSegment.WireSpacingInfo"])
+                spacinginfo_data = data_ravens["AssetInfo"]["WireSpacingInfo"][spacinginfo_name]
+                wire_positions = spacinginfo_data["WireSpacingInfo.WirePositions"]
+                num_of_wires = length(wire_positions)
+
+                # Coordinates
+                x_coords = Vector{Float64}(undef, num_of_wires)
+                y_coords = Vector{Float64}(undef, num_of_wires)
+
+                Threads.@threads for i in 1:1:num_of_wires
+                    x_coords[i] = get(wire_positions[i], "WirePosition.xCoord", 0.0)
+                    y_coords[i] = get(wire_positions[i], "WirePosition.yCoord", 0.0)
+                end
+
+                # angular frequency
+                ω = 2π * base_freq
+                ω₀ = 2π * base_freq
+
+                # Get data for each specific ACLineSegmentPhase
+                segmentphase_data = ravens_obj["ACLineSegment.ACLineSegmentPhase"]
+
+                # Wire Info.
+                gmr = Vector{Float64}(undef, nphases)   # gmr of Wire, default: radius of wire * 0.7788
+                radius = Vector{Float64}(undef, nphases)    # radius of Wire
+                rac = Vector{Float64}(undef, nphases)   # AC resistance
+                rdc = Vector{Float64}(undef, nphases)   # DC resistance, default: AC resistance / 1.02
+                dcable = Vector{Float64}(undef, nphases)   # diameter of Wire: radius of wire * 2
+
+                # Concentric Neutrals Info.
+                rstrand = Vector{Float64}(undef, nphases)  # resistance of CN cable
+                nstrand = Vector{Float64}(undef, nphases)  # number of CN conductors
+                dstrand = Vector{Float64}(undef, nphases)  # diameter of CN conductor
+                gmrstrand = Vector{Float64}(undef, nphases)    # gmr of CN conductor, default: radius of CN * 0.7788
+
+                # insulation info.
+                epsr = ones(nphases).*2.3        # default permittivity of insulation
+                dins = Vector{Float64}(undef, nphases) # diameter over insulation (over jacket)
+                tins = Vector{Float64}(undef, nphases) # thickness of insulation
+
+                # tape shield info.
+                diashield = Vector{Float64}(undef, nphases)
+                tapelayer = Vector{Float64}(undef, nphases)
+                tapelap = Vector{Float64}(undef, nphases)
+
+
+                for i in 1:1:nphases
+
+                    wireinfo_name = _extract_name(segmentphase_data[i]["PowerSystemResource.AssetDatasheet"])
+                    wireinfo_data = data_ravens["AssetInfo"]["WireInfo"][wireinfo_name]
+
+                    radius[i] = get(wireinfo_data, "WireInfo.radius", NaN)
+                    @assert  radius[i] != NaN "WireInfo radius not found! using NaN. Revise data."
+
+                    dcable[i] = radius[i] * 2.0
+
+                    # TODO: WireInfo gmr is missing.
+                    # gmr[i] = get(wireinfo_data, "WireInfo.gmr", NaN)
+                    gmr[i] = radius[i] * 0.778        # gmr
+
+                    if wireinfo_data["Ravens.cimObjectType"] == "OverheadWireInfo"
+                        rac[i] = get(wireinfo_data, "WireInfo.rAC25", NaN)
+                        @assert rac[i] != NaN "WireInfo AC25 resistance is not found! using NaN. Revise data."
+                        rdc[i] = rac[i] / 1.02
+                    elseif wireinfo_data["Ravens.cimObjectType"] == "ConcentricNeutralCableInfo"
+                        rdc[i] = get(wireinfo_data, "WireInfo.rDC20", NaN)
+                        # TODO: remove / only for testing and not get ERROR!
+                        rdc[i] = 1.0
+                        @assert rdc[i] != NaN "WireInfo rDC20 resistance is not found! using NaN. Revise data."
+                        rac[i] = rdc[i] * 1.02
+                    else
+                        @error("Cable type not supported. Resistances (AC or DC) not found!")
+                    end
+
+                    # Concentric Neutrals Information.
+                    rstrand[i] = get(wireinfo_data, "ConcentricNeutralCableInfo.neutralStrandRDC20", NaN)
+                    nstrand[i] = get(wireinfo_data, "ConcentricNeutralCableInfo.neutralStrandCount", NaN)
+                    dstrand[i] = get(wireinfo_data, "ConcentricNeutralCableInfo.nuetralStrandRadius", NaN) * 2.0
+                    # TODO: missing correct spelling / needs fix on feeder data.
+                    # gmrstrand[i] = get(wireinfo_data, "ConcentricNeutralCableInfo.neutralStrandGmr", NaN)
+                    gmrstrand[i] = (dstrand[i]/2.0) * 0.778
+
+                    # insulation information
+                    dins[i] = get(wireinfo_data, "CableInfo.diameterOverJacket", NaN)
+                    tins[i] = get(wireinfo_data, "WireInfo.insulationThickness", NaN)
+
+                    # TODO: tape shielded cables information
+                    diashield[i] = NaN
+                    tapelayer[i] = NaN
+                    tapelap[i] = NaN
+
+                end
+
+                # Check for NaNs and replace with missing.
+                rstrand = findfirst(isnan, rstrand) !== nothing ? missing : rstrand
+                nstrand = findfirst(isnan, nstrand) !== nothing ? missing : nstrand
+                dstrand = findfirst(isnan, dstrand) !== nothing ? missing : dstrand
+                gmrstrand = findfirst(isnan, gmrstrand) !== nothing ? missing : gmrstrand
+                dins = findfirst(isnan, dins) !== nothing ? missing : dins
+                tins = findfirst(isnan, tins) !== nothing ? missing : tins
+                diashield = findfirst(isnan, diashield) !== nothing ? missing : diashield
+                tapelayer = findfirst(isnan, tapelayer) !== nothing ? missing : tapelayer
+                tapelap = findfirst(isnan, tapelap) !== nothing ? missing : tapelap
+
+                # nconds
+                nconds = num_of_wires
+
+                # TODO: earth model (using default)
+                earth_model = "deri"
+
+                # rho (default) - ρ = earth resistivity = 100 Ω-m
+                rho = 100
+
+                @info "$(x_coords)"
+                @info "$(y_coords)"
+                @info "$(ω)"
+                @info "$(gmr)"
+                @info "$(radius)"
+                @info "$(num_of_wires)"
+                @info "$(earth_model)"
+                @info "$(rac)"
+                @info "$(ω₀)"
+                @info "$(rdc)"
+                @info "$(rho)"
+                @info "$(nphases)"
+                @info "$(rstrand)"
+                @info "$(nstrand)"
+                @info "$(dcable)"
+                @info "$(dstrand)"
+                @info "$(gmrstrand)"
+                @info "$(epsr)"
+                @info "$(dins)"
+                @info "$(tins)"
+                @info "$(diashield)"
+                @info "$(tapelayer)"
+                @info "$(tapelap)"
+
+                # Calculate line constants
+                z, y =  calculate_line_constants(
+                    x_coords,
+                    x_coords,
+                    ω,
+                    gmr,
+                    radius,
+                    num_of_wires,
+                    earth_model,
+                    rac,
+                    ω₀,
+                    rdc,
+                    rho,
+                    nphases,
+                    rstrand,
+                    nstrand,
+                    dcable,
+                    dstrand,
+                    gmrstrand,
+                    epsr,
+                    dins,
+                    tins,
+                    diashield,
+                    tapelayer,
+                    tapelap
+                )
+
+                # # TODO: how to specify this reduce in RAVENS?
+                # if reduce
+                #     z, y = _kron(z, y, nphases)
+                # end
+
+                @info "Impedance: $(z)"
+                @info "Admittance: $(y)"
+
+                rs, xs = real(z), imag(z)
+                g, b = real(y), imag(y)
+
+                b_fr = (b ./ 2.0) .* base_freq
+                b_to = (b ./ 2.0) .* base_freq
+                g_fr = (g ./ 2.0) .* base_freq
+                g_to = (g ./ 2.0) .* base_freq
+
+                math_obj["br_r"] = _impedance_conversion_ravens(ravens_obj, rs)
+                math_obj["br_x"] = _impedance_conversion_ravens(ravens_obj, xs)
+
+                math_obj["b_fr"] = _admittance_conversion_ravens(ravens_obj, b_fr)
+                math_obj["b_to"] = _admittance_conversion_ravens(ravens_obj, b_to)
+
+                math_obj["g_fr"] = _admittance_conversion_ravens(ravens_obj, g_fr)
+                math_obj["g_to"] = _admittance_conversion_ravens(ravens_obj, g_to)
+
+                @info "$( math_obj["br_r"])"
+                @info "$( math_obj["br_x"])"
+                @info "$( math_obj["b_fr"])"
+                @info "$( math_obj["b_to"])"
+                @info "$( math_obj["g_fr"])"
+                @info "$( math_obj["g_to"])"
+
             end
 
             math_obj["angmin"] = get(ravens_obj, "vad_lb", fill(-60.0, nphases))

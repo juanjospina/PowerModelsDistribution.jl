@@ -44,6 +44,18 @@ end
 
 
 "converts impendance in Ohm/m by multiplying by length"
+function _impedance_conversion_ravens(eng_obj::Dict{String,<:Any}, vals::Matrix{Float64})
+    return vals .* get(eng_obj, "Conductor.length", 1.0)
+end
+
+
+"converts admittance by multiplying by 2πωl"
+function _admittance_conversion_ravens(eng_obj::Dict{String,<:Any}, vals::Matrix{Float64})
+    2.0 .* pi .* vals .* get(eng_obj, "Conductor.length", 1.0) ./ 1e9
+end
+
+
+"converts impendance in Ohm/m by multiplying by length"
 function _impedance_conversion_ravens(data_eng::Dict{String,Any}, eng_obj::Dict{String,Any}, key::String)
 
     _conductor_count =  data_eng["PerLengthPhaseImpedance.conductorCount"]
