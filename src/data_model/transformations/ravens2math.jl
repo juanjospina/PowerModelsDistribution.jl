@@ -288,7 +288,8 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
         for (name, ravens_obj) in get(conductors, "ACLineSegment", Dict{Any,Dict{String,Any}}())
             math_obj = _init_math_obj_ravens("ac_line_segment", name, ravens_obj, length(data_math["branch"]) + 1; pass_props=pass_props)
 
-            nphases = length(ravens_obj["ACLineSegment.ACLineSegmentPhase"])
+            nconds = length(ravens_obj["ACLineSegment.ACLineSegmentPhase"]) # number of conductors/wires
+            nphases = 0 # init number of phases
             terminals = ravens_obj["ConductingEquipment.Terminals"]
 
             f_node = _extract_name(terminals[1]["Terminal.ConnectivityNode"])
@@ -297,7 +298,17 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
             math_obj["f_bus"] = data_math["bus_lookup"][f_node]
             math_obj["t_bus"] = data_math["bus_lookup"][t_node]
 
-            bus_terminals = nphases >= 3 ? collect(1:nphases) : [_phase_map[phase["ACLineSegmentPhase.phase"]] for phase in ravens_obj["ACLineSegment.ACLineSegmentPhase"]]
+            bus_terminals = nconds >= 3 ? collect(1:nconds) : [_phase_map[phase["ACLineSegmentPhase.phase"]] for phase in ravens_obj["ACLineSegment.ACLineSegmentPhase"]]
+
+            # TODO: Kron reduce bus terminals by removing conn 4
+            reduce = false # flag for Kron reduction
+            if 4 in bus_terminals
+                reduce = true
+                bus_terminals = filter!(x -> x != 4, bus_terminals)
+                nphases = nconds - 1
+            else
+                nphases = nconds
+            end
 
             for bus in [math_obj["f_bus"], math_obj["t_bus"]]
                 data_math["bus"][string(bus)]["terminals"] = bus_terminals
@@ -349,30 +360,28 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
                 segmentphase_data = ravens_obj["ACLineSegment.ACLineSegmentPhase"]
 
                 # Wire Info.
-                gmr = Vector{Float64}(undef, nphases)   # gmr of Wire, default: radius of wire * 0.7788
-                radius = Vector{Float64}(undef, nphases)    # radius of Wire
-                rac = Vector{Float64}(undef, nphases)   # AC resistance
-                rdc = Vector{Float64}(undef, nphases)   # DC resistance, default: AC resistance / 1.02
-                dcable = Vector{Float64}(undef, nphases)   # diameter of Wire: radius of wire * 2
+                gmr = Vector{Float64}(undef, nconds)   # gmr of Wire, default: radius of wire * 0.7788
+                radius = Vector{Float64}(undef, nconds)    # radius of Wire
+                rac = Vector{Float64}(undef, nconds)   # AC resistance
+                rdc = Vector{Float64}(undef, nconds)   # DC resistance, default: AC resistance / 1.02
+                dcable = Vector{Float64}(undef, nconds)   # diameter of Wire: radius of wire * 2
 
                 # Concentric Neutrals Info.
-                rstrand = Vector{Float64}(undef, nphases)  # resistance of CN cable
-                nstrand = Vector{Float64}(undef, nphases)  # number of CN conductors
-                dstrand = Vector{Float64}(undef, nphases)  # diameter of CN conductor
-                gmrstrand = Vector{Float64}(undef, nphases)    # gmr of CN conductor, default: radius of CN * 0.7788
+                rstrand = Vector{Float64}(undef, nconds)  # resistance of CN cable
+                nstrand = Vector{Float64}(undef, nconds)  # number of CN conductors
+                dstrand = Vector{Float64}(undef, nconds)  # diameter of CN conductor
+                gmrstrand = Vector{Float64}(undef, nconds)    # gmr of CN conductor, default: radius of CN * 0.7788
 
                 # insulation info.
-                epsr = ones(nphases).*2.3        # default permittivity of insulation
-                dins = Vector{Float64}(undef, nphases) # diameter over insulation (over jacket)
-                tins = Vector{Float64}(undef, nphases) # thickness of insulation
+                dins = Vector{Float64}(undef, nconds) # diameter over insulation (over jacket)
+                tins = Vector{Float64}(undef, nconds) # thickness of insulation
 
                 # tape shield info.
-                diashield = Vector{Float64}(undef, nphases)
-                tapelayer = Vector{Float64}(undef, nphases)
-                tapelap = Vector{Float64}(undef, nphases)
+                diashield = Vector{Float64}(undef, nconds)
+                tapelayer = Vector{Float64}(undef, nconds)
+                tapelap = Vector{Float64}(undef, nconds)
 
-
-                for i in 1:1:nphases
+                for i in 1:1:nconds
 
                     wireinfo_name = _extract_name(segmentphase_data[i]["PowerSystemResource.AssetDatasheet"])
                     wireinfo_data = data_ravens["AssetInfo"]["WireInfo"][wireinfo_name]
@@ -380,6 +389,7 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
                     radius[i] = get(wireinfo_data, "WireInfo.radius", NaN)
                     @assert  radius[i] != NaN "WireInfo radius not found! using NaN. Revise data."
 
+                    # Note: gets rewritten as missing if not needed
                     dcable[i] = radius[i] * 2.0
 
                     gmr[i] = get(wireinfo_data, "WireInfo.gmr", radius[i] * 0.778)
@@ -399,7 +409,7 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
                     # Concentric Neutrals Information.
                     rstrand[i] = get(wireinfo_data, "ConcentricNeutralCableInfo.neutralStrandRDC20", NaN)
                     nstrand[i] = get(wireinfo_data, "ConcentricNeutralCableInfo.neutralStrandCount", NaN)
-                    dstrand[i] = get(wireinfo_data, "ConcentricNeutralCableInfo.nuetralStrandRadius", NaN) * 2.0
+                    dstrand[i] = get(wireinfo_data, "ConcentricNeutralCableInfo.neutralStrandRadius", NaN) * 2.0
                     gmrstrand[i] = get(wireinfo_data, "ConcentricNeutralCableInfo.neutralStrandGmr", (dstrand[i]/2.0) * 0.778)
 
                     # insulation information
@@ -416,16 +426,15 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
                 # Check for NaNs and replace with missing.
                 rstrand = findfirst(isnan, rstrand) !== nothing ? missing : rstrand
                 nstrand = findfirst(isnan, nstrand) !== nothing ? missing : nstrand
+                dcable = findfirst(isnan, dstrand) !== nothing ? missing : dcable   # use dstrand as signal for dcable to be missing
                 dstrand = findfirst(isnan, dstrand) !== nothing ? missing : dstrand
                 gmrstrand = findfirst(isnan, gmrstrand) !== nothing ? missing : gmrstrand
+                epsr = findfirst(isnan, dins) !== nothing ? missing : ones(nconds).*2.3 # use dins as signal for epsr to be missing
                 dins = findfirst(isnan, dins) !== nothing ? missing : dins
                 tins = findfirst(isnan, tins) !== nothing ? missing : tins
                 diashield = findfirst(isnan, diashield) !== nothing ? missing : diashield
                 tapelayer = findfirst(isnan, tapelayer) !== nothing ? missing : tapelayer
                 tapelap = findfirst(isnan, tapelap) !== nothing ? missing : tapelap
-
-                # nconds
-                nconds = num_of_wires
 
                 # TODO: earth model (using default)
                 earth_model = "deri"
@@ -433,44 +442,44 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
                 # rho (default) - ρ = earth resistivity = 100 Ω-m
                 rho = 100
 
-                @info "$(x_coords)"
-                @info "$(y_coords)"
-                @info "$(ω)"
-                @info "$(gmr)"
-                @info "$(radius)"
-                @info "$(num_of_wires)"
-                @info "$(earth_model)"
-                @info "$(rac)"
-                @info "$(ω₀)"
-                @info "$(rdc)"
-                @info "$(rho)"
-                @info "$(nphases)"
-                @info "$(rstrand)"
-                @info "$(nstrand)"
-                @info "$(dcable)"
-                @info "$(dstrand)"
-                @info "$(gmrstrand)"
-                @info "$(epsr)"
-                @info "$(dins)"
-                @info "$(tins)"
-                @info "$(diashield)"
-                @info "$(tapelayer)"
-                @info "$(tapelap)"
+                @info "XCOORDS: $(x_coords)"
+                @info "YCOORDS: $(y_coords)"
+                @info "W: $(ω)"
+                @info "GMR: $(gmr)"
+                @info "RADIUS: $(radius)"
+                @info "NUM WIRES: $(num_of_wires)"
+                @info "EARTH: $(earth_model)"
+                @info "RAC: $(rac)"
+                @info "WO: $(ω₀)"
+                @info "RDC: $(rdc)"
+                @info "RHO: $(rho)"
+                @info "NCONDS: $(nconds)"
+                @info "RSTRAND: $(rstrand)"
+                @info "NSTRAND: $(nstrand)"
+                @info "DCABLE: $(dcable)"
+                @info "DTRAND: $(dstrand)"
+                @info "GMRSTRAND: $(gmrstrand)"
+                @info "EPSR: $(epsr)"
+                @info "DINS: $(dins)"
+                @info "TINS: $(tins)"
+                @info "DIASHIELD: $(diashield)"
+                @info "TAPELAYER: $(tapelayer)"
+                @info "TAPELAP: $(tapelap)"
 
                 # Calculate line constants
                 z, y =  calculate_line_constants(
                     x_coords,
-                    x_coords,
+                    y_coords,
                     ω,
                     gmr,
                     radius,
-                    num_of_wires,
+                    nconds, # TODO: check if nwires or nconds
                     earth_model,
                     rac,
                     ω₀,
                     rdc,
                     rho,
-                    nphases,
+                    nphases, # TODO: check if nconds or nphases
                     rstrand,
                     nstrand,
                     dcable,
@@ -484,13 +493,10 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
                     tapelap
                 )
 
-                # # TODO: how to specify this reduce in RAVENS?
-                # if reduce
-                #     z, y = _kron(z, y, nphases)
-                # end
-
-                @info "Impedance: $(z)"
-                @info "Admittance: $(y)"
+                # TODO: Kron reduction
+                if reduce
+                    z, y = _kron(z, y, nphases)
+                end
 
                 rs, xs = real(z), imag(z)
                 g, b = real(y), imag(y)

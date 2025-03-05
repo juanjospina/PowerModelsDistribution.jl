@@ -11,7 +11,8 @@ const _phasecode_map = Dict(
 _phase_map = Dict(
     "SinglePhaseKind.A" => 1,
     "SinglePhaseKind.B" => 2,
-    "SinglePhaseKind.C" => 3
+    "SinglePhaseKind.C" => 3,
+    "SinglePhaseKind.N" => 4
 )
 
 const _multipliers_map = Dict(
