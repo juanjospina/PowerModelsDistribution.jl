@@ -442,29 +442,31 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
                 # rho (default) - ρ = earth resistivity = 100 Ω-m
                 rho = 100
 
-                @info "XCOORDS: $(x_coords)"
-                @info "YCOORDS: $(y_coords)"
-                @info "W: $(ω)"
-                @info "GMR: $(gmr)"
-                @info "RADIUS: $(radius)"
-                @info "NUM WIRES: $(num_of_wires)"
-                @info "EARTH: $(earth_model)"
-                @info "RAC: $(rac)"
-                @info "WO: $(ω₀)"
-                @info "RDC: $(rdc)"
-                @info "RHO: $(rho)"
-                @info "NCONDS: $(nconds)"
-                @info "RSTRAND: $(rstrand)"
-                @info "NSTRAND: $(nstrand)"
-                @info "DCABLE: $(dcable)"
-                @info "DTRAND: $(dstrand)"
-                @info "GMRSTRAND: $(gmrstrand)"
-                @info "EPSR: $(epsr)"
-                @info "DINS: $(dins)"
-                @info "TINS: $(tins)"
-                @info "DIASHIELD: $(diashield)"
-                @info "TAPELAYER: $(tapelayer)"
-                @info "TAPELAP: $(tapelap)"
+                # @info "*********************************"
+                # @info "NAME: $(name)"
+                # @info "XCOORDS: $(x_coords)"
+                # @info "YCOORDS: $(y_coords)"
+                # @info "W: $(ω)"
+                # @info "GMR: $(gmr)"
+                # @info "RADIUS: $(radius)"
+                # @info "NCONDS: $(nconds)"
+                # @info "EARTH: $(earth_model)"
+                # @info "RAC: $(rac)"
+                # @info "WO: $(ω₀)"
+                # @info "RDC: $(rdc)"
+                # @info "RHO: $(rho)"
+                # @info "NPHASES: $(nphases)"
+                # @info "RSTRAND: $(rstrand)"
+                # @info "NSTRAND: $(nstrand)"
+                # @info "DCABLE: $(dcable)"
+                # @info "DTRAND: $(dstrand)"
+                # @info "GMRSTRAND: $(gmrstrand)"
+                # @info "EPSR: $(epsr)"
+                # @info "DINS: $(dins)"
+                # @info "TINS: $(tins)"
+                # @info "DIASHIELD: $(diashield)"
+                # @info "TAPELAYER: $(tapelayer)"
+                # @info "TAPELAP: $(tapelap)"
 
                 # Calculate line constants
                 z, y =  calculate_line_constants(
@@ -515,12 +517,13 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
                 math_obj["g_fr"] = _admittance_conversion_ravens(ravens_obj, g_fr)
                 math_obj["g_to"] = _admittance_conversion_ravens(ravens_obj, g_to)
 
-                @info "$( math_obj["br_r"])"
-                @info "$( math_obj["br_x"])"
-                @info "$( math_obj["b_fr"])"
-                @info "$( math_obj["b_to"])"
-                @info "$( math_obj["g_fr"])"
-                @info "$( math_obj["g_to"])"
+                # @info "$( math_obj["br_r"])"
+                # @info "$( math_obj["br_x"])"
+                # @info "$( math_obj["b_fr"])"
+                # @info "$( math_obj["b_to"])"
+                # @info "$( math_obj["g_fr"])"
+                # @info "$( math_obj["g_to"])"
+                # @info "*********************************"
 
 
             end
@@ -813,6 +816,8 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
 
                         # wdg terminals & phasecode
                         wdg_terminals = wdgs[wdg_id]["ConductingEquipment.Terminals"][1]
+                        @info "$(name)"
+                        @info "$(wdg_terminals)"
                         wdg_phasecode = wdg_terminals["Terminal.phases"]
 
                         # wdg endNumber
@@ -838,29 +843,35 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                         transf_end_info = tank_asset_data["PowerTransformerInfo.TransformerTankInfos"][tank_asset_name]["TransformerTankInfo.TransformerEndInfos"]
                         vnom_wdg = transf_end_info[wdg_endNumber]["TransformerEndInfo.ratedU"]
                         snom_wdg = transf_end_info[wdg_endNumber]["TransformerEndInfo.ratedS"]
-                        leak_impedance_wdg = transf_end_info[wdg_endNumber]["TransformerEndInfo.EnergisedEndShortCircuitTests"][1]["ShortCircuitTest.leakageImpedance"]
-                        resistance_wdg = transf_end_info[wdg_endNumber]["TransformerEndInfo.r"]
                         zbase = (vnom_wdg^2) / snom_wdg
                         ratios = vnom_wdg/voltage_scale_factor
 
                         # assign vnom_wdg to vnom for transformer
                         vnom[wdg_endNumber] = vnom_wdg
 
-                        # compute r_s, x_sc, g_sh, and b_sh per winding per tank (when needed)
-                        r_s[wdg_endNumber][tank_id] = resistance_wdg   # rs is specified with respect to each winding
-                        x_sc[wdg_endNumber][tank_id] = (sqrt((leak_impedance_wdg / zbase)^2 - ((resistance_wdg*100.0 / zbase)*2)^2)/100.0)*zbase
-
-                        # data is measured externally, but we now refer it to the internal side
-                        x_sc[wdg_endNumber][tank_id] = (x_sc[wdg_endNumber][tank_id]/ratios^2)
+                        # resistance computation
+                        transf_star_impedance = get(transf_end_info[wdg_endNumber], "TransformerEndInfo.TransformerStarImpedance", Dict())
+                        r_s[wdg_endNumber][tank_id] = get(transf_end_info[wdg_endNumber], "TransformerEndInfo.r",
+                                            get(transf_star_impedance, "TransformerStarImpedance.r", 0.0))
                         r_s[wdg_endNumber][tank_id] = r_s[wdg_endNumber][tank_id]/ratios^2
+
+                        # reactance computation
+                        x_sc[wdg_endNumber][tank_id] = get(transf_end_info[wdg_endNumber], "TransformerEndInfo.x",
+                                            get(transf_star_impedance, "TransformerStarImpedance.x", 0.0))
+                        # -- alternative computation of xsc using sc tests
+                        if haskey(transf_end_info[wdg_endNumber], "TransformerEndInfo.EnergisedEndShortCircuitTests")
+                            leak_impedance_wdg = transf_end_info[wdg_endNumber]["TransformerEndInfo.EnergisedEndShortCircuitTests"][1]["ShortCircuitTest.leakageImpedance"]
+                            x_sc[wdg_endNumber][tank_id] = (sqrt((leak_impedance_wdg / zbase)^2 - ((r_s[wdg_endNumber][tank_id]*100.0 / zbase)*2)^2)/100.0)*zbase
+                        end
+                        x_sc[wdg_endNumber][tank_id] = (x_sc[wdg_endNumber][tank_id]/ratios^2)
 
                         # g_sh always with respect to wdg #1 always
                         if wdg_endNumber == 1
-                            loss = transf_end_info[1]["TransformerEndInfo.EnergisedEndNoLoadTests"][1]["NoLoadTest.loss"]
+                            transf_end_noloadtest = get(transf_end_info[wdg_endNumber], "TransformerEndInfo.EnergisedEndNoLoadTests", [Dict()])
+                            loss = get(transf_end_noloadtest[1], "NoLoadTest.loss", 0.0)
                             g_sh_tank =  (loss*snom_wdg)/zbase
-                            exct_current = transf_end_info[1]["TransformerEndInfo.EnergisedEndNoLoadTests"][1]["NoLoadTest.excitingCurrent"]
-                            b_sh_tank = -((sqrt((exct_current)^2 - (loss/(0.01*snom_wdg))^2))/(100.0*zbase))
-
+                            exct_current = get(transf_end_noloadtest[1], "NoLoadTest.excitingCurrent", 0.0)
+                            b_sh_tank = -((sqrt(abs((exct_current)^2 - (loss/(0.01*snom_wdg))^2)))/(100.0*zbase))
                             # data is measured externally, but we now refer it to the internal side
                             g_sh[tank_id] = g_sh_tank*ratios^2
                             b_sh[tank_id] = b_sh_tank*ratios^2
@@ -868,7 +879,7 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
 
                         # configuration
                         conf = transf_end_info[wdg_endNumber]["TransformerEndInfo.connectionKind"]
-                        if conf == "WindingConnection.Y" || conf == "WindingConnection.I"
+                        if conf == "WindingConnection.Y" || conf == "WindingConnection.I" ||  conf == "WindingConnection.Yn"
                             configuration[wdg_endNumber] =  WYE
                         elseif conf == "WindingConnection.D"
                             configuration[wdg_endNumber] = DELTA
@@ -911,8 +922,6 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                     else
                         vnom_prev = deepcopy(vnom)
                     end
-
-                    ### ---------------------
 
                 end
 
@@ -1077,7 +1086,7 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
 
                         # wdgs configurations
                         wdg_conf = transf_end_info[wdg_id]["TransformerEndInfo.connectionKind"] # extract wdg conf
-                        if wdg_conf == "WindingConnection.Y" || wdg_conf == "WindingConnection.I"
+                        if wdg_conf == "WindingConnection.Y" || wdg_conf == "WindingConnection.I" ||  conf == "WindingConnection.Yn"
                             wdgs_confs[wdg_id] = WYE
                         elseif wdg_conf == "WindingConnection.D"
                             wdgs_confs[wdg_id] = DELTA
