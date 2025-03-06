@@ -611,7 +611,7 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
             for wdg_id in 1:nrw
 
                 # wdg phasecode & terminals
-                wdg_terminals = wdgs[wdg_id]["ConductingEquipment.Terminals"][1]
+                wdg_terminals = wdgs[wdg_id]["ConductingEquipment.Terminals"][wdg_id]
                 wdg_phasecode = wdg_terminals["Terminal.phases"]
 
                 # wdg endNumber
@@ -638,25 +638,32 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                 end
 
                 # wdgs configurations
-                if wdgs[wdg_id]["PowerTransformerEnd.connectionKind"] == "WindingConnection.Y"
+                if wdgs[wdg_endNumber]["PowerTransformerEnd.connectionKind"] == "WindingConnection.Y" || wdgs[wdg_endNumber]["PowerTransformerEnd.connectionKind"] == "WindingConnection.Yn"
                     wdgs_confs[wdg_endNumber] = WYE
-                elseif wdgs[wdg_id]["PowerTransformerEnd.connectionKind"] == "WindingConnection.D"
+                elseif wdgs[wdg_endNumber]["PowerTransformerEnd.connectionKind"] == "WindingConnection.D"
                     wdgs_confs[wdg_endNumber] = DELTA
                 else
                     @error("PowerTransformer ConnectionKind not supported yet!")
                 end
 
                 # Transformer data for each winding
-                vnom[wdg_id] = wdgs[wdg_id]["PowerTransformerEnd.ratedU"]
-                snom[wdg_id] = wdgs[wdg_id]["PowerTransformerEnd.ratedS"]
-                r_s[wdg_id] = wdgs[wdg_id]["PowerTransformerEnd.r"]
-                if haskey(wdgs[wdg_id], "TransformerEnd.MeshImpedance")
-                    x_sc[wdg_id] = get(wdgs[wdg_id]["TransformerEnd.MeshImpedance"], "TransformerMeshImpedance.x", 0.0)
-                end
-                if haskey(wdgs[wdg_id], "TransformerEnd.CoreAdmittance")
-                    g_sh[wdg_id] =  get(wdgs[wdg_id]["TransformerEnd.CoreAdmittance"], "TransformerCoreAdmittance.g", 0.0)
-                    b_sh[wdg_id] = - get(wdgs[wdg_id]["TransformerEnd.CoreAdmittance"], "TransformerCoreAdmittance.b", 0.0)
-                end
+                vnom[wdg_endNumber] = wdgs[wdg_endNumber]["PowerTransformerEnd.ratedU"]
+                snom[wdg_endNumber] = wdgs[wdg_endNumber]["PowerTransformerEnd.ratedS"]
+
+                # resistance
+                transf_star_impedance = get(wdgs[wdg_endNumber], "TransformerEnd.StarImpedance", Dict())
+                r_s[wdg_endNumber] = get(wdgs[wdg_endNumber], "PowerTransformerEnd.r",
+                                        get(transf_star_impedance, "TransformerStarImpedance.r", 0.0))
+
+                # reactance
+                transf_mesh_impedance = get(wdgs[wdg_endNumber], "TransformerEnd.MeshImpedance", Dict())
+                x_sc[wdg_endNumber] = get(transf_mesh_impedance, "TransformerMeshImpedance.x",
+                                        get(transf_star_impedance, "TransformerStarImpedance.x", 0.0))
+
+                # admittance
+                transf_core_impedance = get(wdgs[wdg_endNumber], "TransformerEnd.CoreAdmittance", Dict())
+                g_sh[wdg_id] =  get(transf_core_impedance, "TransformerCoreAdmittance.g", 0.0)
+                b_sh[wdg_id] = - get(transf_core_impedance, "TransformerCoreAdmittance.b", 0.0)
 
                 # TODO: RatioTapChanger
                 if haskey(wdgs[wdg_id], "TransformerEnd.RatioTapChanger")
@@ -714,7 +721,7 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                 tm_nom = wdgs_confs[wdg_id]==DELTA ? wdgs[wdg_id]["PowerTransformerEnd.ratedU"]*sqrt(3)/voltage_scale_factor : wdgs[wdg_id]["PowerTransformerEnd.ratedU"]/voltage_scale_factor
 
                 # Get correct f_node for winding
-                wdg_term = wdgs[wdg_id]["ConductingEquipment.Terminals"][1]
+                wdg_term = wdgs[wdg_id]["ConductingEquipment.Terminals"][wdg_id]
                 f_node_wdgterm = _extract_name(wdg_term["Terminal.ConnectivityNode"])
 
                 # Transformer Object
@@ -780,7 +787,6 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
 
                 # init nodes vector for combined transformer windings
                 nodes = ["" for _ in 1:nrw]
-                # nodes = [Vector{String}(undef, nphases) for _ in 1:nrw]
 
                 # init rs, x_sc, g_sh, and b_sh data per wdg/tank(phase)
                 r_s = [zeros(Float64, nphases) for _ in 1:nrw]
@@ -815,9 +821,7 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                     for wdg_id in 1:nrw
 
                         # wdg terminals & phasecode
-                        wdg_terminals = wdgs[wdg_id]["ConductingEquipment.Terminals"][1]
-                        @info "$(name)"
-                        @info "$(wdg_terminals)"
+                        wdg_terminals = wdgs[wdg_id]["ConductingEquipment.Terminals"][wdg_id]
                         wdg_phasecode = wdg_terminals["Terminal.phases"]
 
                         # wdg endNumber
@@ -837,7 +841,6 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                         else
                             @error("PhaseCode not supported yet!")
                         end
-
 
                         # transformer tank end info.
                         transf_end_info = tank_asset_data["PowerTransformerInfo.TransformerTankInfos"][tank_asset_name]["TransformerTankInfo.TransformerEndInfos"]
@@ -1036,10 +1039,12 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                     connections = Vector{Vector{Int64}}(undef, nrw)
 
                     # wdgs data vectors
-                    vnom_wdgs = Vector{Float64}(undef, nrw)
-                    snom_wdgs = Vector{Float64}(undef, nrw)
-                    leak_impedance = Vector{Float64}(undef, nrw)
-                    resistance = Vector{Float64}(undef, nrw)
+                    vnom = zeros(Float64, nrw)
+                    # init rs, x_sc, g_sh, and b_sh data per wdg
+                    r_s = zeros(Float64, nrw)
+                    x_sc = zeros(Float64, nrw)
+                    g_sh = 0.0
+                    b_sh = 0.0
 
                     # configurations
                     wdgs_confs = Vector{ConnConfig}(undef, nrw)
@@ -1053,7 +1058,7 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
 
                     for wdg_id in 1:nrw
 
-                        wdg_terminals = wdgs_data[wdg_id]["ConductingEquipment.Terminals"][1]
+                        wdg_terminals = wdgs_data[wdg_id]["ConductingEquipment.Terminals"][wdg_id]
                         wdg_phasecode = wdg_terminals["Terminal.phases"]
                         wdg_endNumber = wdgs_data[wdg_id]["TransformerEnd.endNumber"]
 
@@ -1064,7 +1069,7 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                         # connections (based on _phasecode_map)
                         if haskey(_phasecode_map, wdg_phasecode)
                             wdg_connections = _phasecode_map[wdg_phasecode]
-                            connections[wdg_id] = wdg_connections
+                            connections[wdg_endNumber] = wdg_connections
                         else
                             @error("PhaseCode not supported yet!")
                         end
@@ -1079,61 +1084,70 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
 
                         # transformer tank end info.
                         transf_end_info = tank_asset_data["PowerTransformerInfo.TransformerTankInfos"][tank_asset_name]["TransformerTankInfo.TransformerEndInfos"]
-                        vnom_wdgs[wdg_id] = transf_end_info[wdg_id]["TransformerEndInfo.ratedU"]
-                        snom_wdgs[wdg_id] = transf_end_info[wdg_id]["TransformerEndInfo.ratedS"]
-                        leak_impedance[wdg_id] = transf_end_info[wdg_id]["TransformerEndInfo.EnergisedEndShortCircuitTests"][1]["ShortCircuitTest.leakageImpedance"]
-                        resistance[wdg_id] = transf_end_info[wdg_id]["TransformerEndInfo.r"]
+                        vnom_wdg = transf_end_info[wdg_endNumber]["TransformerEndInfo.ratedU"]
+                        snom_wdg = transf_end_info[wdg_endNumber]["TransformerEndInfo.ratedS"]
+
+                        zbase = (vnom_wdg^2) / snom_wdg
+                        ratios = vnom_wdg/voltage_scale_factor
+
+                        # assign vnom_wdg to vnom for transformer
+                        vnom[wdg_endNumber] = vnom_wdg
+
+                        # resistance computation
+                        transf_star_impedance = get(transf_end_info[wdg_endNumber], "TransformerEndInfo.TransformerStarImpedance", Dict())
+                        r_s[wdg_endNumber] = get(transf_end_info[wdg_endNumber], "TransformerEndInfo.r",
+                                            get(transf_star_impedance, "TransformerStarImpedance.r", 0.0))
+                        r_s[wdg_endNumber] = r_s[wdg_endNumber]/ratios^2
+
+                        # reactance computation
+                        x_sc[wdg_endNumber] = get(transf_end_info[wdg_endNumber], "TransformerEndInfo.x",
+                        get(transf_star_impedance, "TransformerStarImpedance.x", 0.0))
+                        # -- alternative computation of xsc using sc tests
+                        if haskey(transf_end_info[wdg_endNumber], "TransformerEndInfo.EnergisedEndShortCircuitTests")
+                        leak_impedance_wdg = transf_end_info[wdg_endNumber]["TransformerEndInfo.EnergisedEndShortCircuitTests"][1]["ShortCircuitTest.leakageImpedance"]
+                        x_sc[wdg_endNumber] = (sqrt((leak_impedance_wdg / zbase)^2 - ((r_s[wdg_endNumber]*100.0 / zbase)*2)^2)/100.0)*zbase
+                        end
+                        x_sc[wdg_endNumber] = (x_sc[wdg_endNumber]/ratios^2)
+
+                        # g_sh always with respect to wdg #1 always
+                        if wdg_endNumber == 1
+                            transf_end_noloadtest = get(transf_end_info[wdg_endNumber], "TransformerEndInfo.EnergisedEndNoLoadTests", [Dict()])
+                            loss = get(transf_end_noloadtest[1], "NoLoadTest.loss", 0.0)
+                            g_sh_tank =  (loss*snom_wdg)/zbase
+                            exct_current = get(transf_end_noloadtest[1], "NoLoadTest.excitingCurrent", 0.0)
+                            b_sh_tank = -((sqrt(abs((exct_current)^2 - (loss/(0.01*snom_wdg))^2)))/(100.0*zbase))
+                            # data is measured externally, but we now refer it to the internal side
+                            g_sh = g_sh_tank*ratios^2
+                            b_sh = b_sh_tank*ratios^2
+                        end
 
                         # wdgs configurations
-                        wdg_conf = transf_end_info[wdg_id]["TransformerEndInfo.connectionKind"] # extract wdg conf
-                        if wdg_conf == "WindingConnection.Y" || wdg_conf == "WindingConnection.I" ||  conf == "WindingConnection.Yn"
-                            wdgs_confs[wdg_id] = WYE
+                        wdg_conf = transf_end_info[wdg_endNumber]["TransformerEndInfo.connectionKind"] # extract wdg conf
+                        if wdg_conf == "WindingConnection.Y" || wdg_conf == "WindingConnection.I" ||  wdg_conf == "WindingConnection.Yn"
+                            wdgs_confs[wdg_endNumber] = WYE
                         elseif wdg_conf == "WindingConnection.D"
-                            wdgs_confs[wdg_id] = DELTA
+                            wdgs_confs[wdg_endNumber] = DELTA
                         else
                             @error("PowerTransformer ConnectionKind not supported yet!")
                         end
 
                         # TODO: RatioTapChanger
-                        if haskey(wdgs_data[wdg_id], "TransformerEnd.RatioTapChanger")
+                        if haskey(wdgs_data[wdg_endNumber], "TransformerEnd.RatioTapChanger")
                             # TODO: default for now, but needs to be corrected!
-                            tm_set[wdg_id] = fill(1.0, nphases)
-                            tm_lb[wdg_id] = fill(0.9, nphases)
-                            tm_ub[wdg_id] = fill(1.1, nphases)
-                            tm_fix[wdg_id] = ones(Bool, nphases)
-                            tm_step[wdg_id] = fill(1/32, nphases)
+                            tm_set[wdg_endNumber] = fill(1.0, nphases)
+                            tm_lb[wdg_endNumber] = fill(0.9, nphases)
+                            tm_ub[wdg_endNumber] = fill(1.1, nphases)
+                            tm_fix[wdg_endNumber] = ones(Bool, nphases)
+                            tm_step[wdg_endNumber] = fill(1/32, nphases)
                         else # default
-                            tm_set[wdg_id] = fill(1.0, nphases)
-                            tm_lb[wdg_id] = fill(0.9, nphases)
-                            tm_ub[wdg_id] = fill(1.1, nphases)
-                            tm_fix[wdg_id] = ones(Bool, nphases)
-                            tm_step[wdg_id] = fill(1/32, nphases)
+                            tm_set[wdg_endNumber] = fill(1.0, nphases)
+                            tm_lb[wdg_endNumber] = fill(0.9, nphases)
+                            tm_ub[wdg_endNumber] = fill(1.1, nphases)
+                            tm_fix[wdg_endNumber] = ones(Bool, nphases)
+                            tm_step[wdg_endNumber] = fill(1/32, nphases)
                         end
 
                     end
-
-                    # calculate zbase in which the data is specified, and convert to SI
-                    zbase = (vnom_wdgs.^2) ./ snom_wdgs
-
-                    # x_sc computed from leak impedance
-                    x_sc = (sqrt.((leak_impedance ./ zbase).^2 - ((resistance.*100.0 ./ zbase)*2).^2)./100.0).*zbase
-
-                    # rs is specified with respect to each winding
-                    r_s = resistance
-
-                    # g_sh always with respect to wdg #1
-                    loss = tank_asset_data["PowerTransformerInfo.TransformerTankInfos"][tank_asset_name]["TransformerTankInfo.TransformerEndInfos"][1]["TransformerEndInfo.EnergisedEndNoLoadTests"][1]["NoLoadTest.loss"]
-                    g_sh =  (loss*snom_wdgs[1])/zbase[1]
-
-                    exct_current = tank_asset_data["PowerTransformerInfo.TransformerTankInfos"][tank_asset_name]["TransformerTankInfo.TransformerEndInfos"][1]["TransformerEndInfo.EnergisedEndNoLoadTests"][1]["NoLoadTest.excitingCurrent"]
-                    b_sh = -((sqrt((exct_current)^2 - (loss/(0.01*snom_wdgs[1]))^2))/(100.0*zbase[1]))
-
-                    # data is measured externally, but we now refer it to the internal side
-                    ratios = vnom_wdgs/voltage_scale_factor
-                    x_sc = (x_sc./ratios.^2)
-                    r_s = r_s./ratios.^2
-                    g_sh = g_sh*ratios[1]^2
-                    b_sh = b_sh*ratios[1]^2
 
                     # convert x_sc from list of upper triangle elements to an explicit dict
                     y_sh = g_sh + im*b_sh
@@ -1172,10 +1186,10 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                         wdg_info = tank_asset_data["PowerTransformerInfo.TransformerTankInfos"][tank_asset_name]["TransformerTankInfo.TransformerEndInfos"]
 
                         # make virtual bus and mark it for reduction
-                        tm_nom = wdgs_confs[wdg_id]==DELTA ? vnom_wdgs[wdg_id]*sqrt(3)/voltage_scale_factor : vnom_wdgs[wdg_id]/voltage_scale_factor
+                        tm_nom = wdgs_confs[wdg_id]==DELTA ? vnom[wdg_id]*sqrt(3)/voltage_scale_factor : vnom[wdg_id]/voltage_scale_factor
 
                         # Get correct f_node for winding
-                        wdg_term = wdgs_data[wdg_id]["ConductingEquipment.Terminals"][1]
+                        wdg_term = wdgs_data[wdg_id]["ConductingEquipment.Terminals"][wdg_id]
                         f_node_wdgterm = _extract_name(wdg_term["Terminal.ConnectivityNode"])
 
                         # Transformer Object
