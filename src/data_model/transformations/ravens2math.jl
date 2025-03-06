@@ -611,7 +611,7 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
             for wdg_id in 1:nrw
 
                 # wdg phasecode & terminals
-                wdg_terminals = wdgs[wdg_id]["ConductingEquipment.Terminals"][wdg_id]
+                wdg_terminals = wdgs[wdg_id]["ConductingEquipment.Terminals"][1]
                 wdg_phasecode = wdg_terminals["Terminal.phases"]
 
                 # wdg endNumber
@@ -721,7 +721,7 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                 tm_nom = wdgs_confs[wdg_id]==DELTA ? wdgs[wdg_id]["PowerTransformerEnd.ratedU"]*sqrt(3)/voltage_scale_factor : wdgs[wdg_id]["PowerTransformerEnd.ratedU"]/voltage_scale_factor
 
                 # Get correct f_node for winding
-                wdg_term = wdgs[wdg_id]["ConductingEquipment.Terminals"][wdg_id]
+                wdg_term = wdgs[wdg_id]["ConductingEquipment.Terminals"][1]
                 f_node_wdgterm = _extract_name(wdg_term["Terminal.ConnectivityNode"])
 
                 # Transformer Object
@@ -821,7 +821,7 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                     for wdg_id in 1:nrw
 
                         # wdg terminals & phasecode
-                        wdg_terminals = wdgs[wdg_id]["ConductingEquipment.Terminals"][wdg_id]
+                        wdg_terminals = wdgs[wdg_id]["ConductingEquipment.Terminals"][1]
                         wdg_phasecode = wdg_terminals["Terminal.phases"]
 
                         # wdg endNumber
@@ -1058,7 +1058,7 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
 
                     for wdg_id in 1:nrw
 
-                        wdg_terminals = wdgs_data[wdg_id]["ConductingEquipment.Terminals"][wdg_id]
+                        wdg_terminals = wdgs_data[wdg_id]["ConductingEquipment.Terminals"][1]
                         wdg_phasecode = wdg_terminals["Terminal.phases"]
                         wdg_endNumber = wdgs_data[wdg_id]["TransformerEnd.endNumber"]
 
@@ -1189,7 +1189,7 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                         tm_nom = wdgs_confs[wdg_id]==DELTA ? vnom[wdg_id]*sqrt(3)/voltage_scale_factor : vnom[wdg_id]/voltage_scale_factor
 
                         # Get correct f_node for winding
-                        wdg_term = wdgs_data[wdg_id]["ConductingEquipment.Terminals"][wdg_id]
+                        wdg_term = wdgs_data[wdg_id]["ConductingEquipment.Terminals"][1]
                         f_node_wdgterm = _extract_name(wdg_term["Terminal.ConnectivityNode"])
 
                         # Transformer Object
