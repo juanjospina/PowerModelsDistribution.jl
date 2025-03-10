@@ -170,7 +170,7 @@ function instantiate_mc_model_ravens(
 
     # @info "$(data["bus"])"
 
-    # for i in data["branch"]
+    # for i in data["bus"]
     #     # @info "+++++++++++++++++++++++++++++++++++++++++++++++++++++"
     #     # @info "$(i)"
     #     for (j,k) in enumerate(i)

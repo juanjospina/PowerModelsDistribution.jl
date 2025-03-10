@@ -260,6 +260,9 @@ function _map_ravens2math_connectivity_node!(data_math::Dict{String,<:Any}, data
             math_obj["va"] = ravens_obj["SvVoltage.angle"]
         end
 
+        # nominal voltage kv
+        math_obj["vnom_kv"] = Inf
+
         # Store the mathematical bus object
         data_math["bus"]["$(index)"] = math_obj
 
@@ -286,7 +289,7 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
         conductors = data_ravens["PowerSystemResource"]["Equipment"]["ConductingEquipment"]["Conductor"]
 
         for (name, ravens_obj) in get(conductors, "ACLineSegment", Dict{Any,Dict{String,Any}}())
-            math_obj = _init_math_obj_ravens("ac_line_segment", name, ravens_obj, length(data_math["branch"]) + 1; pass_props=pass_props)
+            math_obj = _init_math_obj_ravens("conductor", name, ravens_obj, length(data_math["branch"]) + 1; pass_props=pass_props)
 
             nconds = length(ravens_obj["ACLineSegment.ACLineSegmentPhase"]) # number of conductors/wires
             nphases = 0 # init number of phases
@@ -650,6 +653,9 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                 vnom[wdg_endNumber] = wdgs[wdg_endNumber]["PowerTransformerEnd.ratedU"]
                 snom[wdg_endNumber] = wdgs[wdg_endNumber]["PowerTransformerEnd.ratedS"]
 
+                # Add vnom info to bus
+                data_math["bus"][string(bus)]["vnom_kv"] = deepcopy(vnom[wdg_endNumber]/voltage_scale_factor)
+
                 # resistance
                 transf_star_impedance = get(wdgs[wdg_endNumber], "TransformerEnd.StarImpedance", Dict())
                 r_s[wdg_endNumber] = get(wdgs[wdg_endNumber], "PowerTransformerEnd.r",
@@ -939,6 +945,8 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                         data_math["bus"][string(bus)]["vmax"] = fill(Inf, nphases)
                         data_math["bus"][string(bus)]["grounded"] = zeros(Bool, nphases)
                     end
+                    # Add vnom info to bus
+                    data_math["bus"][string(bus)]["vnom_kv"] = deepcopy(vnom[i]/voltage_scale_factor)
                 end
 
                 # wdg i, tank 1  - assumes tank 1 always exists
@@ -1093,6 +1101,9 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                         # assign vnom_wdg to vnom for transformer
                         vnom[wdg_endNumber] = vnom_wdg
 
+                        # Add vnom info to bus
+                        data_math["bus"][string(bus)]["vnom_kv"] = deepcopy(vnom_wdg/voltage_scale_factor)
+
                         # resistance computation
                         transf_star_impedance = get(transf_end_info[wdg_endNumber], "TransformerEndInfo.TransformerStarImpedance", Dict())
                         r_s[wdg_endNumber] = get(transf_end_info[wdg_endNumber], "TransformerEndInfo.r",
@@ -1237,7 +1248,15 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                 end
             end
         end
+
     end
+
+    # TODO: assign voltages to buses after going out from defining all transformers
+    _assign_voltages_to_buses!(data_math, _math_edge_elements)  # 1st pass, everything connected to a transformer bus
+    _assign_voltages_to_buses!(data_math, _math_edge_elements)  # seconds pass, everything else?
+    _assign_voltages_to_buses!(data_math, _math_edge_elements)  # third pass, everything else?
+    _assign_voltages_to_buses!(data_math, _math_edge_elements)  # third pass, everything else?
+
 end
 
 
@@ -1279,15 +1298,22 @@ function _map_ravens2math_energy_consumer!(data_math::Dict{String,<:Any}, data_r
             math_obj["model"] = POWER
         end
 
-        # Set the nominal voltage
-        base_voltage_ref = _extract_name(ravens_obj["ConductingEquipment.BaseVoltage"])
-        base_voltage = data_ravens["BaseVoltage"][base_voltage_ref]["BaseVoltage.nominalVoltage"]
-        # math_obj["vnom_kv"] = (base_voltage / voltage_scale_factor) / (sqrt(3) / 2)
-        math_obj["vnom_kv"] = (base_voltage / voltage_scale_factor_sqrt3)
-
         # Set voltage bounds for the bus connected
         bus_info = string(math_obj["load_bus"])
         bus_conn = data_math["bus"][bus_info]
+
+        # Set the nominal voltage
+        if haskey(ravens_obj, "ConductingEquipment.BaseVoltage")
+            base_voltage_ref = _extract_name(ravens_obj["ConductingEquipment.BaseVoltage"])
+            base_voltage = data_ravens["BaseVoltage"][base_voltage_ref]["BaseVoltage.nominalVoltage"]
+            math_obj["vnom_kv"] = (base_voltage / voltage_scale_factor_sqrt3)
+        else
+            if (bus_conn["vnom_kv"] != Inf)
+                math_obj["vnom_kv"] = bus_conn["vnom_kv"]
+            else
+                @error("No Base Voltage found for the bus of load $(name)!")
+            end
+        end
 
         if haskey(data_ravens["ConnectivityNode"][connectivity_node], "ConnectivityNode.OperationalLimitSet")
             op_limit_id = _extract_name(data_ravens["ConnectivityNode"][connectivity_node]["ConnectivityNode.OperationalLimitSet"])
@@ -1410,7 +1436,7 @@ function _map_ravens2math_energy_consumer!(data_math::Dict{String,<:Any}, data_r
 
         # Set the configuration
         # TODO: ADD: "PhaseShuntConnectionKind.Yn", "PhaseShuntConnectionKind.I", "PhaseShuntConnectionKind.G"
-        config_map = Dict("PhaseShuntConnectionKind.Y" => WYE, "PhaseShuntConnectionKind.D" => DELTA)
+        config_map = Dict("PhaseShuntConnectionKind.Y" => WYE, "PhaseShuntConnectionKind.D" => DELTA, "PhaseShuntConnectionKind.Yn" => WYE)
         config = get(config_map, ravens_obj["EnergyConsumer.phaseConnection"], nothing)
         if config !== nothing
             math_obj["configuration"] = config
@@ -1491,10 +1517,16 @@ function _map_ravens2math_energy_source!(data_math::Dict{String,<:Any}, data_rav
 
         math_obj["configuration"] = get(ravens_obj, "EnergySource.connectionKind", WYE)
 
-        # Vnom and vbases_default
-        base_voltage_ref = _extract_name(ravens_obj["ConductingEquipment.BaseVoltage"])
-        vnom = data_ravens["BaseVoltage"][base_voltage_ref]["BaseVoltage.nominalVoltage"] / sqrt(nconductors)
-        data_math["settings"]["vbases_default"][connectivity_node] = vnom / voltage_scale_factor
+
+        # Set the nominal voltage
+        if haskey(ravens_obj, "ConductingEquipment.BaseVoltage")
+            base_voltage_ref = _extract_name(ravens_obj["ConductingEquipment.BaseVoltage"])
+            vnom = data_ravens["BaseVoltage"][base_voltage_ref]["BaseVoltage.nominalVoltage"] / sqrt(nconductors)
+            data_math["settings"]["vbases_default"][connectivity_node] = vnom / voltage_scale_factor
+        else
+            vnom = ravens_obj["EnergySource.nominalVoltage"] / sqrt(nconductors)
+            data_math["settings"]["vbases_default"][connectivity_node] = vnom / voltage_scale_factor
+        end
 
         # Power, voltage, and limits
         nphases = nconductors  # You can adjust nphases based on your specific kron reduction logic if needed
@@ -1531,7 +1563,7 @@ function _map_ravens2math_energy_source!(data_math::Dict{String,<:Any}, data_rav
                 "name" => "_virtual_bus.energy_source.$name",
                 "bus_type" => math_obj["gen_status"] == 0 ? 4 : math_obj["control_mode"] == Int(ISOCHRONOUS) ? 3 : 2,
                 "vm" => fill(ravens_obj["EnergySource.voltageMagnitude"] / voltage_scale_factor_sqrt3, nphases),
-                "va" => rad2deg.(_wrap_to_pi.([-2 * π / nphases * (i - 1) + ravens_obj["EnergySource.voltageAngle"] for i in 1:nphases])),
+                "va" => rad2deg.(_wrap_to_pi.([-2 * π / nphases * (i - 1) + get(ravens_obj, "EnergySource.voltageAngle", 0.0) for i in 1:nphases])),
                 "vmin" => fill(ravens_obj["EnergySource.voltageMagnitude"] / voltage_scale_factor_sqrt3, nphases),
                 "vmax" => fill(ravens_obj["EnergySource.voltageMagnitude"] / voltage_scale_factor_sqrt3, nphases),
                 "vm_pair_lb" => deepcopy(get(ravens_obj, "EnergySource.vpairMin", Tuple{Any,Any,Real}[])),
@@ -1572,7 +1604,7 @@ function _map_ravens2math_energy_source!(data_math::Dict{String,<:Any}, data_rav
             data_math["bus"]["$gen_bus"]["vmin"] = [vm_lb..., fill(0.0, nconductors - nphases)...]
             data_math["bus"]["$gen_bus"]["vmax"] = [vm_ub..., fill(Inf, nconductors - nphases)...]
             data_math["bus"]["$gen_bus"]["vm"] = fill(ravens_obj["EnergySource.voltageMagnitude"] / voltage_scale_factor_sqrt3, nphases)
-            data_math["bus"]["$gen_bus"]["va"] = rad2deg.(_wrap_to_pi.([-2 * π / nphases * (i - 1) + ravens_obj["EnergySource.voltageAngle"] for i in 1:nphases]))
+            data_math["bus"]["$gen_bus"]["va"] = rad2deg.(_wrap_to_pi.([-2 * π / nphases * (i - 1) + get(ravens_obj, "EnergySource.voltageAngle", 0.0) for i in 1:nphases]))
             data_math["bus"]["$gen_bus"]["bus_type"] = _compute_bus_type(bus_conn["bus_type"], math_obj["gen_status"], math_obj["control_mode"])
         end
 
@@ -1634,10 +1666,20 @@ function _map_ravens2math_rotating_machine!(data_math::Dict{String,<:Any}, data_
             data_math["bus"]["$(math_obj["gen_bus"])"]["bus_type"] = _compute_bus_type(bus_type, status, control_mode)
 
             # Set the nominal voltage
-            base_voltage_ref = _extract_name(ravens_obj["ConductingEquipment.BaseVoltage"])
-            nominal_voltage = data_ravens["BaseVoltage"][base_voltage_ref]["BaseVoltage.nominalVoltage"]
-            base_voltage =  nominal_voltage / sqrt(nconductors)
-            math_obj["vbase"] =  base_voltage / voltage_scale_factor
+            bus_conn =  data_math["bus"]["$(math_obj["gen_bus"])"]
+            if haskey(ravens_obj, "ConductingEquipment.BaseVoltage")
+                base_voltage_ref = _extract_name(ravens_obj["ConductingEquipment.BaseVoltage"])
+                nominal_voltage = data_ravens["BaseVoltage"][base_voltage_ref]["BaseVoltage.nominalVoltage"]
+                base_voltage =  nominal_voltage / sqrt(nconductors)
+                math_obj["vbase"] =  base_voltage / voltage_scale_factor
+            else
+                if (bus_conn["vnom_kv"] != Inf)
+                    math_obj["vnom_kv"] = bus_conn["vnom_kv"]
+                    nominal_voltage = math_obj["vnom_kv"] * voltage_scale_factor * sqrt(nconductors)
+                else
+                    @error("No Base Voltage found for the bus of Generator $(name)!")
+                end
+            end
 
             if control_mode == Int(ISOCHRONOUS) && status == 1
                 data_math["bus"]["$(math_obj["gen_bus"])"]["vm"] = ((get(ravens_obj, "RotatingMachine.ratedU", nominal_voltage))/nominal_voltage)* ones(nconductors)

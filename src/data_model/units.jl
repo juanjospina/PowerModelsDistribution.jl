@@ -175,6 +175,39 @@ function _discover_voltage_zones(data_model::Dict{String,<:Any}, edge_elements::
     return zones
 end
 
+
+
+
+
+
+function _assign_voltages_to_buses!(data_model::Dict{String,<:Any}, edge_elements::Vector{String})
+    for comp_type in edge_elements[edge_elements .!= "transformer"]
+        for (id,obj) in get(data_model, comp_type, Dict())
+            f_bus = string(obj["f_bus"])
+            t_bus = string(obj["t_bus"])
+            vkv_f = get(data_model["bus"][f_bus], "vnom_kv", Inf)
+            vkv_t = get(data_model["bus"][t_bus], "vnom_kv", Inf)
+
+            if  (vkv_f != Inf || vkv_t != Inf)
+                if (vkv_f == Inf)
+                    vkv_f = vkv_t
+                    data_model["bus"][f_bus]["vnom_kv"] = vkv_t
+                else
+                    vkv_t = vkv_f
+                    data_model["bus"][t_bus]["vnom_kv"] = vkv_f
+                end
+            end
+        end
+    end
+
+end
+
+
+
+
+
+
+
 """
     calc_math_voltage_bases(data_model::Dict{String,<:Any}, vbase_sources::Dict{String,<:Real})::Tuple{Dict,Dict}
 
