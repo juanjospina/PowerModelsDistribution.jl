@@ -1194,7 +1194,7 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                         node = _extract_name(wdg_terminals["Terminal.ConnectivityNode"])
                         bus = data_math["bus_lookup"][node]
                         bus_data = data_math["bus"][string(bus)]
-                        
+
                         # Add vmin/vmax/terminals info. if missing
                         if !(haskey(bus_data, "terminals")) || (length(bus_data["terminals"]) < length(wdg_connections))
                             bus_data["terminals"] = wdg_connections
@@ -2091,8 +2091,8 @@ function _map_ravens2math_switch!(data_math::Dict{String,<:Any}, data_ravens::Di
         # Add vmin/vmax/terminals info to fbus and tbus if missing
         for bus in [math_obj["f_bus"], math_obj["t_bus"]]
             bus_data = data_math["bus"][string(bus)]
-            if !(haskey(bus_data, "terminals")) || (length(bus_data["terminals"]) < length(bus_terminals))
-                bus_data["terminals"] = bus_terminals
+            if !(haskey(bus_data, "terminals")) || (length(bus_data["terminals"]) < length(f_conns))
+                bus_data["terminals"] = f_conns
                 bus_data["vmin"] = fill(0.0, nphases)
                 bus_data["vmax"] = fill(Inf, nphases)
                 bus_data["grounded"] = zeros(Bool, nphases)
