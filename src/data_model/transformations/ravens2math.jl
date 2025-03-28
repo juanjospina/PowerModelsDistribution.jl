@@ -53,7 +53,6 @@ function transform_data_model_ravens(
         global_keys=global_keys,
     )
 
-    # TODO: Correct network data transforms a lot of the values of lines/branches (other values maybe too)
     correct_network_data && correct_network_data!(data_math; make_pu=make_pu, make_pu_extensions=make_pu_extensions)
 
     return data_math
@@ -183,12 +182,11 @@ function _map_ravens2math_nw!(data_math::Dict{String,<:Any}, data_ravens::Dict{S
 
         _init_base_components!(data_math)
 
-        ## TODO
-        # for property in get(ravens2math_passthrough, "root", String[])
-        #     if haskey(data_ravens, property)
-        #         data_math[property] = deepcopy(data_ravens[property])
-        #     end
-        # end
+        for property in get(ravens2math_passthrough, "root", String[])
+            if haskey(data_ravens, property)
+                data_math[property] = deepcopy(data_ravens[property])
+            end
+        end
 
         for type in pmd_ravens_asset_types
             getfield(PowerModelsDistribution, Symbol("_map_ravens2math_$(type)!"))(data_math, data_ravens; pass_props=get(ravens2math_passthrough, type, String[]))
@@ -211,12 +209,11 @@ function _map_ravens2math_nw!(data_math::Dict{String,<:Any}, data_ravens::Dict{S
 
         _init_base_components!(data_math[string(nw)])
 
-        ## TODO
-        # for property in get(ravens2math_passthrough, "root", String[])
-        #     if haskey(data_ravens, property)
-        #         data_math[property] = deepcopy(data_ravens[property])
-        #     end
-        # end
+        for property in get(ravens2math_passthrough, "root", String[])
+            if haskey(data_ravens, property)
+                data_math[property] = deepcopy(data_ravens[property])
+            end
+        end
 
         for type in pmd_ravens_asset_types
             getfield(PowerModelsDistribution, Symbol("_map_ravens2math_$(type)!"))(data_math[string(nw)], data_ravens; pass_props=get(ravens2math_passthrough, type, String[]), nw=nw)
@@ -448,32 +445,6 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
                 # rho (default) - ρ = earth resistivity = 100 Ω-m
                 rho = 100
 
-                # @info "*********************************"
-                # @info "NAME: $(name)"
-                # @info "XCOORDS: $(x_coords)"
-                # @info "YCOORDS: $(y_coords)"
-                # @info "W: $(ω)"
-                # @info "GMR: $(gmr)"
-                # @info "RADIUS: $(radius)"
-                # @info "NCONDS: $(nconds)"
-                # @info "EARTH: $(earth_model)"
-                # @info "RAC: $(rac)"
-                # @info "WO: $(ω₀)"
-                # @info "RDC: $(rdc)"
-                # @info "RHO: $(rho)"
-                # @info "NPHASES: $(nphases)"
-                # @info "RSTRAND: $(rstrand)"
-                # @info "NSTRAND: $(nstrand)"
-                # @info "DCABLE: $(dcable)"
-                # @info "DTRAND: $(dstrand)"
-                # @info "GMRSTRAND: $(gmrstrand)"
-                # @info "EPSR: $(epsr)"
-                # @info "DINS: $(dins)"
-                # @info "TINS: $(tins)"
-                # @info "DIASHIELD: $(diashield)"
-                # @info "TAPELAYER: $(tapelayer)"
-                # @info "TAPELAP: $(tapelap)"
-
                 # Calculate line constants
                 z, y =  calculate_line_constants(
                     x_coords,
@@ -522,15 +493,6 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
 
                 math_obj["g_fr"] = _admittance_conversion_ravens(ravens_obj, g_fr)
                 math_obj["g_to"] = _admittance_conversion_ravens(ravens_obj, g_to)
-
-                # @info "$( math_obj["br_r"])"
-                # @info "$( math_obj["br_x"])"
-                # @info "$( math_obj["b_fr"])"
-                # @info "$( math_obj["b_to"])"
-                # @info "$( math_obj["g_fr"])"
-                # @info "$( math_obj["g_to"])"
-                # @info "*********************************"
-
 
             end
 
@@ -1072,7 +1034,7 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                 y_sh = g_sh + im*b_sh
                 z_sc = Dict([(key, im*x_sc[i]) for (i,key) in enumerate([(i,j) for i in 1:nrw for j in i+1:nrw])])
 
-                # TODO: Polarity
+                # init Polarity
                 polarity = fill(1, nrw)
 
                 # Status
@@ -1318,7 +1280,7 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                     # dimensions
                     dims = length(tm_set[1])
 
-                    # TODO: polarity
+                    # init polarity
                     polarity = fill(1, nrw)
 
                     # Status
@@ -1779,12 +1741,7 @@ function _map_ravens2math_rotating_machine!(data_math::Dict{String,<:Any}, data_
             math_obj = _init_math_obj_ravens("rotating_machine", name, ravens_obj, length(data_math["gen"])+1; pass_props=pass_props)
 
             # Connections/phases obtained from Terminals
-            if haskey(ravens_obj["ConductingEquipment.Terminals"][1], "Terminal.phases")
-                phasecode = ravens_obj["ConductingEquipment.Terminals"][1]["Terminal.phases"]
-                connections = _phasecode_map[phasecode]
-            else
-                connections = [1, 2, 3] # default
-            end
+            connections = _phasecode_map[get(ravens_obj["ConductingEquipment.Terminals"][1], "Terminal.phases", "PhaseCode.ABC")]
 
             nconductors = length(connections)
             math_obj["connections"] = connections
@@ -1889,8 +1846,9 @@ function _map_ravens2math_power_electronics!(data_math::Dict{String,<:Any}, data
 
                 math_obj = _init_math_obj_ravens("photovoltaic_unit", name, ravens_obj, length(data_math["gen"])+1; pass_props=pass_props)
 
-                # TODO: connections/phases do not exist in the RAVENS-CIM (Need to be added) - should come from terminals
-                connections = [1, 2, 3] # TODO
+                # Connections/phases
+                connections = _phasecode_map[get(ravens_obj["ConductingEquipment.Terminals"][1], "Terminal.phases", "PhaseCode.ABC")]
+
                 nconductors = length(connections)
                 math_obj["connections"] = connections
 
@@ -2166,12 +2124,8 @@ function _map_ravens2math_shunt_compensator!(data_math::Dict{String,<:Any}, data
             math_obj["status"] = status == true ? 1 : 0
 
             # Connections/phases obtained from Terminals
-            if haskey(ravens_obj["ConductingEquipment.Terminals"][1], "Terminal.phases")
-                phasecode = ravens_obj["ConductingEquipment.Terminals"][1]["Terminal.phases"]
-                connections = _phasecode_map[phasecode]
-            else
-                connections = [1, 2, 3] # default
-            end
+            connections = _phasecode_map[get(ravens_obj["ConductingEquipment.Terminals"][1], "Terminal.phases", "PhaseCode.ABC")]
+
             math_obj["connections"] = connections
             terminals = connections
 
