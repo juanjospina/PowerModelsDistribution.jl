@@ -312,18 +312,14 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
                 nphases = nconds
             end
 
-            # Assign terminals and vmin/vmax
+            # Add vmin/vmax/terminals info to fbus and tbus if missing
             for bus in [math_obj["f_bus"], math_obj["t_bus"]]
-                if !(haskey(data_math["bus"][string(bus)], "terminals"))
-                    data_math["bus"][string(bus)]["terminals"] = bus_terminals
-                    data_math["bus"][string(bus)]["vmin"] = fill(0.0, nphases)
-                    data_math["bus"][string(bus)]["vmax"] = fill(Inf, nphases)
-                    data_math["bus"][string(bus)]["grounded"] = zeros(Bool, nphases)
-                elseif (length(data_math["bus"][string(bus)]["terminals"]) < length(bus_terminals))
-                    data_math["bus"][string(bus)]["terminals"] = bus_terminals
-                    data_math["bus"][string(bus)]["vmin"] = fill(0.0, nphases)
-                    data_math["bus"][string(bus)]["vmax"] = fill(Inf, nphases)
-                    data_math["bus"][string(bus)]["grounded"] = zeros(Bool, nphases)
+                bus_data = data_math["bus"][string(bus)]
+                if !(haskey(bus_data, "terminals")) || (length(bus_data["terminals"]) < length(bus_terminals))
+                    bus_data["terminals"] = bus_terminals
+                    bus_data["vmin"] = fill(0.0, nphases)
+                    bus_data["vmax"] = fill(Inf, nphases)
+                    bus_data["grounded"] = zeros(Bool, nphases)
                 end
             end
 
@@ -357,7 +353,7 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
                 x_coords = Vector{Float64}(undef, num_of_wires)
                 y_coords = Vector{Float64}(undef, num_of_wires)
 
-                Threads.@threads for i in 1:1:num_of_wires
+                for i in 1:1:num_of_wires
                     x_coords[i] = get(wire_positions[i], "WirePosition.xCoord", 0.0)
                     y_coords[i] = get(wire_positions[i], "WirePosition.yCoord", 0.0)
                 end
@@ -485,13 +481,13 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
                     ω,
                     gmr,
                     radius,
-                    nconds, # TODO: check if nwires or nconds
+                    nconds,
                     earth_model,
                     rac,
                     ω₀,
                     rdc,
                     rho,
-                    nphases, # TODO: check if nconds or nphases
+                    nphases,
                     rstrand,
                     nstrand,
                     dcable,
@@ -505,7 +501,7 @@ function _map_ravens2math_conductor!(data_math::Dict{String,<:Any}, data_ravens:
                     tapelap
                 )
 
-                # TODO: Kron reduction
+                # Kron reduction
                 if reduce
                     z, y = _kron(z, y, nphases)
                 end
@@ -644,16 +640,12 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                 # Add terminals and voltage limits info. if missing
                 node = _extract_name(wdg_terminals["Terminal.ConnectivityNode"])
                 bus = data_math["bus_lookup"][node]
-                if !(haskey(data_math["bus"][string(bus)], "terminals"))
-                    data_math["bus"][string(bus)]["terminals"] = connections[wdg_endNumber]
-                    data_math["bus"][string(bus)]["vmin"] = fill(0.0, nphases)
-                    data_math["bus"][string(bus)]["vmax"] = fill(Inf, nphases)
-                    data_math["bus"][string(bus)]["grounded"] = zeros(Bool, nphases)
-                elseif (length(data_math["bus"][string(bus)]["terminals"]) < length(connections[wdg_endNumber]))
-                    data_math["bus"][string(bus)]["terminals"] = connections[wdg_endNumber]
-                    data_math["bus"][string(bus)]["vmin"] = fill(0.0, nphases)
-                    data_math["bus"][string(bus)]["vmax"] = fill(Inf, nphases)
-                    data_math["bus"][string(bus)]["grounded"] = zeros(Bool, nphases)
+                bus_data = data_math["bus"][string(bus)]
+                if !(haskey(bus_data, "terminals")) || (length(bus_data["terminals"]) < length(connections[wdg_endNumber]))
+                    bus_data["terminals"] = connections[wdg_endNumber]
+                    bus_data["vmin"] = fill(0.0, nphases)
+                    bus_data["vmax"] = fill(Inf, nphases)
+                    bus_data["grounded"] = zeros(Bool, nphases)
                 end
 
                 # wdgs configurations
@@ -1055,21 +1047,16 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
 
                 end
 
-
                  # Add information about bus/node if missing
                 for i in 1:length(nodes)
-                    n = nodes[i]
-                    bus = data_math["bus_lookup"][n]
-                    if !(haskey(data_math["bus"][string(bus)], "terminals"))
-                        data_math["bus"][string(bus)]["terminals"] = connections[i]
-                        data_math["bus"][string(bus)]["vmin"] = fill(0.0, nphases)
-                        data_math["bus"][string(bus)]["vmax"] = fill(Inf, nphases)
-                        data_math["bus"][string(bus)]["grounded"] = zeros(Bool, nphases)
-                    elseif (length(data_math["bus"][string(bus)]["terminals"]) < length(connections[i]))
-                        data_math["bus"][string(bus)]["terminals"] = connections[i]
-                        data_math["bus"][string(bus)]["vmin"] = fill(0.0, nphases)
-                        data_math["bus"][string(bus)]["vmax"] = fill(Inf, nphases)
-                        data_math["bus"][string(bus)]["grounded"] = zeros(Bool, nphases)
+                    node = nodes[i]
+                    bus = data_math["bus_lookup"][node]
+                    bus_data = data_math["bus"][string(bus)]
+                    if !(haskey(bus_data, "terminals")) || (length(bus_data["terminals"]) < length(connections[i]))
+                        bus_data["terminals"] = connections[i]
+                        bus_data["vmin"] = fill(0.0, nphases)
+                        bus_data["vmax"] = fill(Inf, nphases)
+                        bus_data["grounded"] = zeros(Bool, nphases)
                     end
                     # Add vnom info to bus
                     data_math["settings"]["vbases_network"][string(bus)] = deepcopy(vnom[i]/voltage_scale_factor)
@@ -1194,10 +1181,6 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                         wdg_phasecode = wdg_terminals["Terminal.phases"]
                         wdg_endNumber = wdgs_data[wdg_id]["TransformerEnd.endNumber"]
 
-                        # from-and-to-nodes for wdg
-                        node = _extract_name(wdg_terminals["Terminal.ConnectivityNode"])
-                        bus = data_math["bus_lookup"][node]
-
                         # connections (based on _phasecode_map)
                         if haskey(_phasecode_map, wdg_phasecode)
                             wdg_connections = _phasecode_map[wdg_phasecode]
@@ -1206,18 +1189,18 @@ function _map_ravens2math_power_transformer!(data_math::Dict{String,<:Any}, data
                             @error("PhaseCode not supported yet!")
                         end
 
-                        # Add vmin/vmax/terminals info. if missing
+                        # from-and-to-nodes for wdg
                         nphases = length(wdg_connections)
-                        if !(haskey(data_math["bus"][string(bus)], "terminals"))
-                            data_math["bus"][string(bus)]["terminals"] = wdg_connections
-                            data_math["bus"][string(bus)]["vmin"] = fill(0.0, nphases)
-                            data_math["bus"][string(bus)]["vmax"] = fill(Inf, nphases)
-                            data_math["bus"][string(bus)]["grounded"] = zeros(Bool, nphases)
-                        elseif (length(data_math["bus"][string(bus)]["terminals"]) < length(wdg_connections))
-                            data_math["bus"][string(bus)]["terminals"] = wdg_connections
-                            data_math["bus"][string(bus)]["vmin"] = fill(0.0, nphases)
-                            data_math["bus"][string(bus)]["vmax"] = fill(Inf, nphases)
-                            data_math["bus"][string(bus)]["grounded"] = zeros(Bool, nphases)
+                        node = _extract_name(wdg_terminals["Terminal.ConnectivityNode"])
+                        bus = data_math["bus_lookup"][node]
+                        bus_data = data_math["bus"][string(bus)]
+                        
+                        # Add vmin/vmax/terminals info. if missing
+                        if !(haskey(bus_data, "terminals")) || (length(bus_data["terminals"]) < length(wdg_connections))
+                            bus_data["terminals"] = wdg_connections
+                            bus_data["vmin"] = fill(0.0, nphases)
+                            bus_data["vmax"] = fill(Inf, nphases)
+                            bus_data["grounded"] = zeros(Bool, nphases)
                         end
 
                         # transformer tank end info.
@@ -1579,7 +1562,7 @@ function _map_ravens2math_energy_consumer!(data_math::Dict{String,<:Any}, data_r
                     end
                 end
 
-                # Multipliers instead of actual values - TODO: add support for EnergyConsumerPhase data
+                # Multipliers instead of actual values
                 if !haskey(schdl, "BasicIntervalSchedule.value1Unit")
                     math_obj["pd"] = get(schdl["EnergyConsumerSchedule.RegularTimePoints"][nw], "RegularTimePoint.value1", 1.0) .* active_power ./ power_scale_factor
                     math_obj["qd"] = get(schdl["EnergyConsumerSchedule.RegularTimePoints"][nw], "RegularTimePoint.value1", 1.0) .* reactive_power ./ power_scale_factor
@@ -2107,16 +2090,12 @@ function _map_ravens2math_switch!(data_math::Dict{String,<:Any}, data_ravens::Di
 
         # Add vmin/vmax/terminals info to fbus and tbus if missing
         for bus in [math_obj["f_bus"], math_obj["t_bus"]]
-            if !(haskey(data_math["bus"][string(bus)], "terminals"))
-                data_math["bus"][string(bus)]["terminals"] = f_conns
-                data_math["bus"][string(bus)]["vmin"] = fill(0.0, nphases)
-                data_math["bus"][string(bus)]["vmax"] = fill(Inf, nphases)
-                data_math["bus"][string(bus)]["grounded"] = zeros(Bool, nphases)
-            elseif (length(data_math["bus"][string(bus)]["terminals"]) < length(f_conns))
-                data_math["bus"][string(bus)]["terminals"] = f_conns
-                data_math["bus"][string(bus)]["vmin"] = fill(0.0, nphases)
-                data_math["bus"][string(bus)]["vmax"] = fill(Inf, nphases)
-                data_math["bus"][string(bus)]["grounded"] = zeros(Bool, nphases)
+            bus_data = data_math["bus"][string(bus)]
+            if !(haskey(bus_data, "terminals")) || (length(bus_data["terminals"]) < length(bus_terminals))
+                bus_data["terminals"] = bus_terminals
+                bus_data["vmin"] = fill(0.0, nphases)
+                bus_data["vmax"] = fill(Inf, nphases)
+                bus_data["grounded"] = zeros(Bool, nphases)
             end
         end
 
