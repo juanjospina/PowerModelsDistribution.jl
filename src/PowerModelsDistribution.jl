@@ -70,6 +70,7 @@ module PowerModelsDistribution
     include("data_model/transformations/dss2eng.jl")
     include("data_model/transformations/eng2math.jl")
     include("data_model/transformations/math2eng.jl")
+    include("data_model/transformations/math2ravens.jl")
     include("data_model/transformations/utils.jl")
     include("data_model/transformations/reduce.jl")
     include("data_model/transformations/ravens2math.jl")
