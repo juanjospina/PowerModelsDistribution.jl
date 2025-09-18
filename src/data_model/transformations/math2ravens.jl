@@ -72,6 +72,7 @@ function transform_solution_ravens(
     solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.Statuses"] = []
 
     # PowerFlow solutions for Transformers elements
+    seen_xfrmrs = Set{String}()     # Set to save xfrmr names
     for (xfrmr_number, xfrmr_data) in get(solution_math, "transformer", Dict{Any,Dict{String,Any}}())
 
         source_id_vect = split(data_math["transformer"][xfrmr_number]["source_id"], '.')
@@ -98,6 +99,21 @@ function transform_solution_ravens(
             push!(solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.PowerFlows"], pf_info)
 
         end
+
+        if !(cond_eq_name in seen_xfrmrs)
+            xfrmr_status = data_math["transformer"][xfrmr_number]["status"] == 1 ? true : false
+            status_info = Dict(
+                "ArStatus.ConductingEquipment" => "$(cond_eq_type)::'$(cond_eq_name)'",
+                "AnalysisResultData.DataValues" => Dict(
+                    "AvStatus.inService" => xfrmr_status,
+                )
+            )
+            push!(solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.Statuses"], status_info)
+        end
+
+        # Store the xfrmr name
+        push!(seen_xfrmrs, "$(cond_eq_name)")
+
     end
 
 
@@ -233,10 +249,10 @@ function transform_solution_ravens(
 
     # @info "$(solution_ravens)"
 
-    # open("./OPFTEST-mod.json","w") do f
-    #     JSON.print(f, solution_ravens, 2)
-    # end
+    open("./OPFTEST-mod.json","w") do f
+        JSON.print(f, solution_ravens, 2)
+    end
 
-    # asdasd
+    asdasd
 
 end
