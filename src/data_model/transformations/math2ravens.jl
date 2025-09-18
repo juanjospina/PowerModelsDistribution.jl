@@ -116,6 +116,8 @@ function transform_solution_ravens(
 
     end
 
+    # Switches States
+    solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.Switches"] = []
 
     edge_elements = ["branch", "switch"]
     for edge_elmnt in edge_elements
@@ -127,6 +129,19 @@ function transform_solution_ravens(
 
                 cond_eq_type = split(data_math[edge_elmnt][edge_number]["source_id"], '.')[1]
                 cond_eq_name = split(data_math[edge_elmnt][edge_number]["source_id"], '.')[2]
+
+                # Add Switch state (only switches)
+                if edge_elmnt == "switch"
+                    sw_state = data_math[edge_elmnt][edge_number]["state"] == 1 ? false : true
+                    state_info = Dict(
+                    "ArSwitch.Switch" => "$(cond_eq_type)::'$(cond_eq_name)'",
+                    "AnalysisResultData.DataValues" => Dict(
+                        "AvSwitch.open" => sw_state,
+                        )
+                    )
+                    push!(solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.Switches"], state_info)
+                end
+
 
                 num_ends = 2
                 # # OPTIONAL opt out of edge elements beside transformers to write from and to flows
@@ -246,13 +261,6 @@ function transform_solution_ravens(
         end
     end
 
-
-    # @info "$(solution_ravens)"
-
-    open("./OPFTEST-mod.json","w") do f
-        JSON.print(f, solution_ravens, 2)
-    end
-
-    asdasd
+    return solution_ravens
 
 end
