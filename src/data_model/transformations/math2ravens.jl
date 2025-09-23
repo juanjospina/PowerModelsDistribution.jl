@@ -87,10 +87,15 @@ function transform_solution_ravens(
                         "ArCurveData.xvalue" => parse(Float64, nw),
                         "ArCurveData.DataValues" => Dict(
                             "AvVoltage.v" => solution_math["nw"][nw]["bus"][node_number]["vm"][i]*solution_math["nw"][nw]["settings"]["voltage_scale_factor"],
-                            "AvVoltage.angle" => solution_math["nw"][nw]["bus"][node_number]["va"][i],
                             "Ravens.cimObjectType" => "AvVoltage",
                         ),
                     )
+
+                    # Conditionally add the angle (some do not have it)
+                    if haskey(solution_math["nw"][nw]["bus"][node_number], "va")
+                        mn_info["ArCurveData.DataValues"]["AvVoltage.angle"] = solution_math["nw"][nw]["bus"][node_number]["va"][i]
+                    end
+
                     push!(mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"], mn_info)
                 end
 
@@ -248,6 +253,7 @@ function transform_solution_ravens(
                 # Add Switch state (only switches)
                 if edge_elmnt == "switch"
 
+                    # initial state from math network data
                     sw_state = nws_math_data[edge_elmnt][edge_number]["state"] == 1 ? false : true
 
                     if mn_flag == true
@@ -260,6 +266,7 @@ function transform_solution_ravens(
                         mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
 
                         for (nw, nw_data) in solution_math["nw"]
+                            sw_state = Int(nw_data[edge_elmnt][edge_number]["state"]) == 0 ? true : false
                             mn_info = Dict(
                                 "ArCurveData.xvalue" => parse(Float64, nw),
                                 "ArCurveData.DataValues" => Dict(
@@ -494,6 +501,7 @@ function transform_solution_ravens(
                     object_prefix = "gen_"
                 end
 
+                # original status from math data
                 elemtn_status = nws_math_data[node_elmnt][node_number]["$(object_prefix)status"] == 1 ? true : false
 
                 # Multinetwork support
@@ -507,6 +515,7 @@ function transform_solution_ravens(
                     mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
 
                     for (nw, nw_data) in solution_math["nw"]
+                        elemtn_status = Int(nw_data[node_elmnt][node_number]["status"]) == 1 ? true : false
                         mn_info = Dict(
                             "ArCurveData.xvalue" => parse(Float64, nw),
                             "ArCurveData.DataValues" => Dict(
