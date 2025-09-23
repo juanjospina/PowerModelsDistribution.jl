@@ -23,10 +23,15 @@ function transform_solution_ravens(
     )
 
     # multinetwork/multiperiod support
+    mn_flag = false
     if ismultinetwork(data_math)
-        nws_math_data = data_math["nw"]
+        # Assumes there is at least nw=1
+        nws_math_data = data_math["nw"]["1"]
+        solution = solution_math["nw"]["1"]
+        mn_flag = true
     else
         nws_math_data = data_math
+        solution = solution_math
     end
 
     # Create OptimalPowerFlow AnalysisResult Dictionary
@@ -56,19 +61,19 @@ function transform_solution_ravens(
     # PowerFlow solutions for Transformers elements
     seen_xfrmrs = Set{String}()     # Set to save xfrmr names
 
-    # Multinetwork support
-    if ismultinetwork(data_math)
+    # Buses/ConnectivityNodes
+    for (node_number, node_data) in solution["bus"]
 
-        # # Buses/ConnectivityNodes --- Assummes there is at least nw=1
-        for (node_number, node_data) in solution_math["nw"]["1"]["bus"]
+        # Extract the phases for the node
+        node_terminals = nws_math_data["bus"][node_number]["terminals"]
+        phase_kinds = [phase_mapping[x] for x in node_terminals]
 
-            # Extract the phases for the node
-            node_terminals = nws_math_data["1"]["bus"][node_number]["terminals"]
-            phase_kinds = [phase_mapping[x] for x in node_terminals]
+        for (i, result_phase) in enumerate(phase_kinds)
 
-            for (i, result_phase) in enumerate(phase_kinds)
+            conn_node = split(nws_math_data["bus"][node_number]["source_id"], '.')[2]
 
-                conn_node = split(nws_math_data["1"]["bus"][node_number]["source_id"], '.')[2]
+            # Multinetwork support
+            if mn_flag == true
 
                 # Curve data
                 mn_data = Dict()
@@ -79,14 +84,14 @@ function transform_solution_ravens(
 
                 for (nw, nw_data) in solution_math["nw"]
                     mn_info = Dict(
-                            "ArCurveData.xvalue" => parse(Float64, nw),
-                            "ArCurveData.DataValues" => Dict(
-                                "AvVoltage.v" => solution_math["nw"][nw]["bus"][node_number]["vm"][i]*solution_math["nw"][nw]["settings"]["voltage_scale_factor"],
-                                "AvVoltage.angle" => solution_math["nw"][nw]["bus"][node_number]["va"][i],
-                                "Ravens.cimObjectType" => "AvVoltage",
-                            ),
-                        )
-                     push!(mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"], mn_info)
+                        "ArCurveData.xvalue" => parse(Float64, nw),
+                        "ArCurveData.DataValues" => Dict(
+                            "AvVoltage.v" => solution_math["nw"][nw]["bus"][node_number]["vm"][i]*solution_math["nw"][nw]["settings"]["voltage_scale_factor"],
+                            "AvVoltage.angle" => solution_math["nw"][nw]["bus"][node_number]["va"][i],
+                            "Ravens.cimObjectType" => "AvVoltage",
+                        ),
+                    )
+                    push!(mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"], mn_info)
                 end
 
                 voltage_info = Dict(
@@ -94,26 +99,8 @@ function transform_solution_ravens(
                     "ArVoltage.ConnectivityNode" => "ConnectivityNode::'$(conn_node)'",
                     "AnalysisResultData.Curve" => mn_data["AnalysisResultData.Curve"]
                 )
-                push!(solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.Voltages"], voltage_info)
 
-            end
-        end
-
-
-
-
-
-
-    else
-
-        # Buses/ConnectivityNodes
-        for (node_number, node_data) in solution_math["bus"]
-            # Extract the phases for the node
-            node_terminals = nws_math_data["bus"][node_number]["terminals"]
-            phase_kinds = [phase_mapping[x] for x in node_terminals]
-
-            for (i, result_phase) in enumerate(phase_kinds)
-                conn_node = split(nws_math_data["bus"][node_number]["source_id"], '.')[2]
+            else
                 voltage_info = Dict(
                     "AnalysisResultData.phase" => result_phase,
                     "ArVoltage.ConnectivityNode" => "ConnectivityNode::'$(conn_node)'",
@@ -123,24 +110,60 @@ function transform_solution_ravens(
                         "Ravens.cimObjectType" => "AvVoltage",
                     ),
                 )
-                push!(solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.Voltages"], voltage_info)
             end
+
+            # Push info to final dictionary
+            push!(solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.Voltages"], voltage_info)
+
         end
 
-        # Transformers
-        for (xfrmr_number, xfrmr_data) in get(solution_math, "transformer", Dict{Any,Dict{String,Any}}())
+    end
 
-            # Extract data
-            source_id_vect = split(nws_math_data["transformer"][xfrmr_number]["source_id"], '.')
-            cond_eq_type = source_id_vect[2]
-            cond_eq_name = source_id_vect[3]
-            end_num = parse(Int, source_id_vect[4])
+    # Transformers
+    for (xfrmr_number, xfrmr_data) in get(solution, "transformer", Dict{Any,Dict{String,Any}}())
 
-            # Extract the phases for the branch
-            terminals = nws_math_data["transformer"][xfrmr_number]["f_connections"]
-            phase_kinds = [phase_mapping[x] for x in terminals]
+        # Extract data
+        source_id_vect = split(nws_math_data["transformer"][xfrmr_number]["source_id"], '.')
+        cond_eq_type = source_id_vect[2]
+        cond_eq_name = source_id_vect[3]
+        end_num = parse(Int, source_id_vect[4])
 
-            for (i, result_phase) in enumerate(phase_kinds)
+        # Extract the phases for the branch
+        terminals = nws_math_data["transformer"][xfrmr_number]["f_connections"]
+        phase_kinds = [phase_mapping[x] for x in terminals]
+
+        for (i, result_phase) in enumerate(phase_kinds)
+
+            # Multinetwork support
+            if mn_flag == true
+
+                # Curve data
+                mn_data = Dict()
+                mn_data["AnalysisResultData.Curve"] = Dict()
+                # TODO: obtain this information from pmd_data_math["nw"]["1"]["time_elapsed"]
+                mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
+                mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
+
+                for (nw, nw_data) in solution_math["nw"]
+                    mn_info = Dict(
+                        "ArCurveData.xvalue" => parse(Float64, nw),
+                        "ArCurveData.DataValues" => Dict(
+                            "AvPowerFlow.p" => solution_math["nw"][nw]["transformer"][xfrmr_number]["pf"][i]*solution_math["nw"][nw]["settings"]["power_scale_factor"],
+                            "AvPowerFlow.q" => solution_math["nw"][nw]["transformer"][xfrmr_number]["qf"][i]*solution_math["nw"][nw]["settings"]["power_scale_factor"],
+                            "AvPowerFlow.endNumber" => end_num,
+                            "Ravens.cimObjectType" => "ArPowerFlow",
+                        ),
+                    )
+                    push!(mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"], mn_info)
+                end
+
+                pf_info = Dict(
+                    "AnalysisResultData.phase" => result_phase,
+                    "ArPowerFlow.ConductingEquipment" => "$(cond_eq_type)::'$(cond_eq_name)'",
+                    "AnalysisResultData.Curve" => mn_data["AnalysisResultData.Curve"]
+                )
+
+            else
 
                 pf_info = Dict(
                     "AnalysisResultData.phase" => result_phase,
@@ -152,74 +175,173 @@ function transform_solution_ravens(
                         "Ravens.cimObjectType" => "ArPowerFlow",
                     ),
                 )
-                push!(solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.PowerFlows"], pf_info)
+
 
             end
 
-            if !(cond_eq_name in seen_xfrmrs)
-                xfrmr_status = nws_math_data["transformer"][xfrmr_number]["status"] == 1 ? true : false
+            push!(solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.PowerFlows"], pf_info)
+
+        end
+
+        # Status for Xfrmrs
+        if !(cond_eq_name in seen_xfrmrs)
+
+            xfrmr_status = nws_math_data["transformer"][xfrmr_number]["status"] == 1 ? true : false
+
+            # Multinetwork support
+            if mn_flag == true
+
+                # Curve data
+                mn_data = Dict()
+                mn_data["AnalysisResultData.Curve"] = Dict()
+                # TODO: obtain this information from pmd_data_math["nw"]["1"]["time_elapsed"]
+                mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
+                mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
+
+                for (nw, nw_data) in solution_math["nw"]
+                    mn_info = Dict(
+                        "ArCurveData.xvalue" => parse(Float64, nw),
+                        "ArCurveData.DataValues" => Dict(
+                            "AvStatus.inService" => xfrmr_status
+                        ),
+                    )
+                    push!(mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"], mn_info)
+                end
+
+                status_info = Dict(
+                    "ArStatus.ConductingEquipment" => "$(cond_eq_type)::'$(cond_eq_name)'",
+                    "AnalysisResultData.Curve" => mn_data["AnalysisResultData.Curve"]
+                )
+
+            else
+
                 status_info = Dict(
                     "ArStatus.ConductingEquipment" => "$(cond_eq_type)::'$(cond_eq_name)'",
                     "AnalysisResultData.DataValues" => Dict(
                         "AvStatus.inService" => xfrmr_status,
                     )
                 )
-                push!(solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.Statuses"], status_info)
+
             end
 
-            # Store the xfrmr name
-            push!(seen_xfrmrs, "$(cond_eq_name)")
+            push!(solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.Statuses"], status_info)
 
         end
 
-        # Edge elements (branches, switches)
-        edge_elements = ["branch", "switch"]
-        for edge_elmnt in edge_elements
+        # Store the xfrmr name
+        push!(seen_xfrmrs, "$(cond_eq_name)")
 
-            for (edge_number, edge_data) in get(solution_math, edge_elmnt, Dict{Any,Dict{String,Any}}())
+    end
 
-                # Filter virtual elements that exist in the MATH model
-                if !occursin("virtual", nws_math_data[edge_elmnt][edge_number]["name"])
+    # Edge elements (branches, switches)
+    edge_elements = ["branch", "switch"]
+    for edge_elmnt in edge_elements
 
-                    cond_eq_type = split(nws_math_data[edge_elmnt][edge_number]["source_id"], '.')[1]
-                    cond_eq_name = split(nws_math_data[edge_elmnt][edge_number]["source_id"], '.')[2]
+        for (edge_number, edge_data) in get(solution, edge_elmnt, Dict{Any,Dict{String,Any}}())
 
-                    # Add Switch state (only switches)
-                    if edge_elmnt == "switch"
-                        sw_state = nws_math_data[edge_elmnt][edge_number]["state"] == 1 ? false : true
-                        state_info = Dict(
-                        "ArSwitch.Switch" => "$(cond_eq_type)::'$(cond_eq_name)'",
-                        "AnalysisResultData.DataValues" => Dict(
-                            "AvSwitch.open" => sw_state,
+            # Filter virtual elements that exist in the MATH model
+            if !occursin("virtual", nws_math_data[edge_elmnt][edge_number]["name"])
+
+                cond_eq_type = split(nws_math_data[edge_elmnt][edge_number]["source_id"], '.')[1]
+                cond_eq_name = split(nws_math_data[edge_elmnt][edge_number]["source_id"], '.')[2]
+
+                # Add Switch state (only switches)
+                if edge_elmnt == "switch"
+
+                    sw_state = nws_math_data[edge_elmnt][edge_number]["state"] == 1 ? false : true
+
+                    if mn_flag == true
+
+                        # Curve data
+                        mn_data = Dict()
+                        mn_data["AnalysisResultData.Curve"] = Dict()
+                        # TODO: obtain this information from pmd_data_math["nw"]["1"]["time_elapsed"]
+                        mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
+                        mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
+
+                        for (nw, nw_data) in solution_math["nw"]
+                            mn_info = Dict(
+                                "ArCurveData.xvalue" => parse(Float64, nw),
+                                "ArCurveData.DataValues" => Dict(
+                                    "AvSwitch.open" => sw_state,
+                                ),
                             )
-                        )
-                        push!(solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.Switches"], state_info)
-                    end
-
-
-                    num_ends = 2
-                    # # OPTIONAL opt out of edge elements beside transformers to write from and to flows
-                    # if edge_elmnt != "transformer"
-                    #     num_ends = 1
-                    # end
-
-                    for end_num in 1:num_ends # loop through ends
-                        if end_num == 1
-                            connection_flow = "f_connections"
-                            p_flow_direction = "pf"
-                            q_flow_direction = "qf"
-                        else end_num == 2
-                            connection_flow = "t_connections"
-                            p_flow_direction = "pt"
-                            q_flow_direction = "qt"
+                            push!(mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"], mn_info)
                         end
 
-                        # Extract the phases for the branch
-                        terminals = nws_math_data[edge_elmnt][edge_number][connection_flow]
-                        phase_kinds = [phase_mapping[x] for x in terminals]
+                        state_info = Dict(
+                            "ArSwitch.Switch" => "$(cond_eq_type)::'$(cond_eq_name)'",
+                            "AnalysisResultData.Curve" => mn_data["AnalysisResultData.Curve"]
+                        )
 
-                        for (i, result_phase) in enumerate(phase_kinds)
+                    else
+                        state_info = Dict(
+                            "ArSwitch.Switch" => "$(cond_eq_type)::'$(cond_eq_name)'",
+                            "AnalysisResultData.DataValues" => Dict(
+                                "AvSwitch.open" => sw_state,
+                            )
+                        )
 
+                    end
+
+                    push!(solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.Switches"], state_info)
+
+                end
+
+
+                num_ends = 2
+                # # OPTIONAL opt out of edge elements to write from and to flows
+                # if edge_elmnt != "transformer"
+                #     num_ends = 1
+                # end
+
+                for end_num in 1:num_ends # loop through ends
+                    if end_num == 1
+                        connection_flow = "f_connections"
+                        p_flow_direction = "pf"
+                        q_flow_direction = "qf"
+                    else end_num == 2
+                        connection_flow = "t_connections"
+                        p_flow_direction = "pt"
+                        q_flow_direction = "qt"
+                    end
+
+                    # Extract the phases for the branch
+                    terminals = nws_math_data[edge_elmnt][edge_number][connection_flow]
+                    phase_kinds = [phase_mapping[x] for x in terminals]
+
+                    for (i, result_phase) in enumerate(phase_kinds)
+
+                        # Multinetwork support
+                        if mn_flag == true
+
+                            # Curve data
+                            mn_data = Dict()
+                            mn_data["AnalysisResultData.Curve"] = Dict()
+                            # TODO: obtain this information from pmd_data_math["nw"]["1"]["time_elapsed"]
+                            mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
+                            mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
+
+                            for (nw, nw_data) in solution_math["nw"]
+                                mn_info = Dict(
+                                    "ArCurveData.xvalue" => parse(Float64, nw),
+                                    "ArCurveData.DataValues" => Dict(
+                                        "AvPowerFlow.p" => solution_math["nw"][nw][edge_elmnt][edge_number][p_flow_direction][i]*solution_math["nw"][nw]["settings"]["power_scale_factor"],
+                                        "AvPowerFlow.q" => solution_math["nw"][nw][edge_elmnt][edge_number][q_flow_direction][i]*solution_math["nw"][nw]["settings"]["power_scale_factor"],
+                                        "AvPowerFlow.endNumber" => end_num,
+                                        "Ravens.cimObjectType" => "ArPowerFlow",
+                                    ),
+                                )
+                                push!(mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"], mn_info)
+                            end
+
+                            pf_info = Dict(
+                                "AnalysisResultData.phase" => result_phase,
+                                "ArPowerFlow.ConductingEquipment" => "$(cond_eq_type)::'$(cond_eq_name)'",
+                                "AnalysisResultData.Curve" => mn_data["AnalysisResultData.Curve"]
+                            )
+
+                        else
                             pf_info = Dict(
                                 "AnalysisResultData.phase" => result_phase,
                                 "ArPowerFlow.ConductingEquipment" => "$(cond_eq_type)::'$(cond_eq_name)'",
@@ -230,59 +352,124 @@ function transform_solution_ravens(
                                     "Ravens.cimObjectType" => "ArPowerFlow",
                                 ),
                             )
-                            push!(solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.PowerFlows"], pf_info)
 
                         end
+
+                        push!(solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.PowerFlows"], pf_info)
+
+                    end
+                end
+
+                # Statuses
+                object_prefix = ""
+                if edge_elmnt == "branch"
+                    object_prefix = "br_"
+                end
+
+                elemtn_status = nws_math_data[edge_elmnt][edge_number]["$(object_prefix)status"] == 1 ? true : false
+
+                # Multinetwork support
+                if mn_flag == true
+
+                    # Curve data
+                    mn_data = Dict()
+                    mn_data["AnalysisResultData.Curve"] = Dict()
+                    # TODO: obtain this information from pmd_data_math["nw"]["1"]["time_elapsed"]
+                    mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
+                    mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
+
+                    for (nw, nw_data) in solution_math["nw"]
+                        mn_info = Dict(
+                            "ArCurveData.xvalue" => parse(Float64, nw),
+                            "ArCurveData.DataValues" => Dict(
+                                "AvStatus.inService" => elemtn_status
+                            ),
+                        )
+                        push!(mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"], mn_info)
                     end
 
-                    # Statuses
-                    object_prefix = ""
-                    if edge_elmnt == "branch"
-                        object_prefix = "br_"
-                    end
+                    status_info = Dict(
+                        "ArStatus.ConductingEquipment" => "$(cond_eq_type)::'$(cond_eq_name)'",
+                        "AnalysisResultData.Curve" => mn_data["AnalysisResultData.Curve"]
+                    )
 
-                    elemtn_status = nws_math_data[edge_elmnt][edge_number]["$(object_prefix)status"] == 1 ? true : false
+                else
+
                     status_info = Dict(
                         "ArStatus.ConductingEquipment" => "$(cond_eq_type)::'$(cond_eq_name)'",
                         "AnalysisResultData.DataValues" => Dict(
                             "AvStatus.inService" => elemtn_status,
                         )
                     )
-                    push!(solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.Statuses"], status_info)
 
                 end
 
+                push!(solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.Statuses"], status_info)
+
             end
+
         end
+    end
 
-        # Nodal elements (loads, gens)
-        node_elements = ["load", "gen"]
-        for node_elmnt in node_elements
+    # Nodal elements (loads, gens)
+    node_elements = ["load", "gen"]
+    for node_elmnt in node_elements
 
-            for (node_number, node_data) in get(solution_math, node_elmnt, Dict{Any,Dict{String,Any}}())
+        for (node_number, node_data) in get(solution, node_elmnt, Dict{Any,Dict{String,Any}}())
 
-                # Filter virtual elements that exist in the MATH model
-                if !occursin("virtual", nws_math_data[node_elmnt][node_number]["name"])
+            # Filter virtual elements that exist in the MATH model
+            if !occursin("virtual", nws_math_data[node_elmnt][node_number]["name"])
 
-                    cond_eq_type = split(nws_math_data[node_elmnt][node_number]["source_id"], '.')[1]
-                    cond_eq_name = split(nws_math_data[node_elmnt][node_number]["source_id"], '.')[2]
+                cond_eq_type = split(nws_math_data[node_elmnt][node_number]["source_id"], '.')[1]
+                cond_eq_name = split(nws_math_data[node_elmnt][node_number]["source_id"], '.')[2]
 
-                    if node_elmnt == "load"
-                        p_key = "pd"
-                        q_key = "qd"
-                    elseif node_elmnt == "gen"
-                        p_key = "pg"
-                        q_key = "qg"
+                if node_elmnt == "load"
+                    p_key = "pd"
+                    q_key = "qd"
+                elseif node_elmnt == "gen"
+                    p_key = "pg"
+                    q_key = "qg"
+                else
+                    p_key = "p"
+                    q_key = "q"
+                end
+
+                # Extract the phases for the node element
+                terminals = nws_math_data[node_elmnt][node_number]["connections"]
+                phase_kinds = [phase_mapping[x] for x in terminals]
+
+                for (i, result_phase) in enumerate(phase_kinds)
+
+                    # Multinetwork support
+                    if mn_flag == true
+
+                        # Curve data
+                        mn_data = Dict()
+                        mn_data["AnalysisResultData.Curve"] = Dict()
+                        # TODO: obtain this information from pmd_data_math["nw"]["1"]["time_elapsed"]
+                        mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
+                        mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
+
+                        for (nw, nw_data) in solution_math["nw"]
+                            mn_info = Dict(
+                                "ArCurveData.xvalue" => parse(Float64, nw),
+                                "ArCurveData.DataValues" => Dict(
+                                    "AvPowerFlow.p" => solution_math["nw"][nw][node_elmnt][node_number][p_key][i]*solution_math["nw"][nw]["settings"]["power_scale_factor"],
+                                    "AvPowerFlow.q" => solution_math["nw"][nw][node_elmnt][node_number][q_key][i]*solution_math["nw"][nw]["settings"]["power_scale_factor"],
+                                    "Ravens.cimObjectType" => "ArPowerFlow",
+                                ),
+                            )
+                            push!(mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"], mn_info)
+                        end
+
+                        pf_info = Dict(
+                            "AnalysisResultData.phase" => result_phase,
+                            "ArPowerFlow.ConductingEquipment" => "$(cond_eq_type)::'$(cond_eq_name)'",
+                            "AnalysisResultData.Curve" => mn_data["AnalysisResultData.Curve"]
+                        )
+
+
                     else
-                        p_key = "p"
-                        q_key = "q"
-                    end
-
-                    # Extract the phases for the node element
-                    terminals = nws_math_data[node_elmnt][node_number]["connections"]
-                    phase_kinds = [phase_mapping[x] for x in terminals]
-
-                    for (i, result_phase) in enumerate(phase_kinds)
 
                         pf_info = Dict(
                             "AnalysisResultData.phase" => result_phase,
@@ -293,30 +480,63 @@ function transform_solution_ravens(
                                 "Ravens.cimObjectType" => "ArPowerFlow",
                             ),
                         )
-                        push!(solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.PowerFlows"], pf_info)
+
                     end
 
+                    push!(solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.PowerFlows"], pf_info)
 
-                    # Statuses
-                    object_prefix = ""
-                    if node_elmnt == "gen"
-                        object_prefix = "gen_"
+                end
+
+
+                # Statuses
+                object_prefix = ""
+                if node_elmnt == "gen"
+                    object_prefix = "gen_"
+                end
+
+                elemtn_status = nws_math_data[node_elmnt][node_number]["$(object_prefix)status"] == 1 ? true : false
+
+                # Multinetwork support
+                if mn_flag == true
+
+                    # Curve data
+                    mn_data = Dict()
+                    mn_data["AnalysisResultData.Curve"] = Dict()
+                    # TODO: obtain this information from pmd_data_math["nw"]["1"]["time_elapsed"]
+                    mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
+                    mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
+
+                    for (nw, nw_data) in solution_math["nw"]
+                        mn_info = Dict(
+                            "ArCurveData.xvalue" => parse(Float64, nw),
+                            "ArCurveData.DataValues" => Dict(
+                                "AvStatus.inService" => elemtn_status
+                            ),
+                        )
+                        push!(mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"], mn_info)
                     end
 
-                    elemtn_status = nws_math_data[node_elmnt][node_number]["$(object_prefix)status"] == 1 ? true : false
+                    status_info = Dict(
+                        "ArStatus.ConductingEquipment" => "$(cond_eq_type)::'$(cond_eq_name)'",
+                        "AnalysisResultData.Curve" => mn_data["AnalysisResultData.Curve"]
+                    )
+
+                else
+
                     status_info = Dict(
                         "ArStatus.ConductingEquipment" => "$(cond_eq_type)::'$(cond_eq_name)'",
                         "AnalysisResultData.DataValues" => Dict(
                             "AvStatus.inService" => elemtn_status,
                         )
                     )
-                    push!(solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.Statuses"], status_info)
+
                 end
+
+                push!(solution_ravens["AnalysisResult"]["OptimalPowerFlow"]["OperationsResult.Statuses"], status_info)
+
             end
         end
-
     end
-
 
     return solution_ravens
 
