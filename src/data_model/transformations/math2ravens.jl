@@ -29,6 +29,11 @@ function transform_solution_ravens(
         nws_math_data = data_math["nw"]["1"]
         solution = solution_math["nw"]["1"]
         mn_flag = true
+
+        # sort nw keys (ensures vectors are organized in RAVENS)
+        keys_array = collect(keys(solution_math["nw"]))
+        sorted_nws = sort(keys_array, by=x -> parse(Int, x))
+
     else
         nws_math_data = data_math
         solution = solution_math
@@ -84,7 +89,7 @@ function transform_solution_ravens(
                 mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
                 mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
 
-                for (nw, nw_data) in solution_math["nw"]
+                for nw in sorted_nws
                     mn_info = Dict(
                         "ArCurveData.xvalue" => parse(Float64, nw)*data_math["nw"][nw]["time_elapsed"],
                         "ArCurveData.DataValues" => Dict(
@@ -150,7 +155,7 @@ function transform_solution_ravens(
                 mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
                 mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
 
-                for (nw, nw_data) in solution_math["nw"]
+                for nw in sorted_nws
                     mn_info = Dict(
                         "ArCurveData.xvalue" => parse(Float64, nw)*data_math["nw"][nw]["time_elapsed"],
                         "ArCurveData.DataValues" => Dict(
@@ -203,7 +208,7 @@ function transform_solution_ravens(
                 mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
                 mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
 
-                for (nw, nw_data) in solution_math["nw"]
+                for nw in sorted_nws
                     mn_info = Dict(
                         "ArCurveData.xvalue" => parse(Float64, nw)*data_math["nw"][nw]["time_elapsed"],
                         "ArCurveData.DataValues" => Dict(
@@ -264,9 +269,9 @@ function transform_solution_ravens(
                         mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
                         mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
 
-                        for (nw, nw_data) in solution_math["nw"]
-                            if haskey(nw_data[edge_elmnt][edge_number], "state")
-                                sw_state = Int(nw_data[edge_elmnt][edge_number]["state"]) == 0 ? true : false
+                        for nw in sorted_nws
+                            if haskey(solution_math["nw"][nw][edge_elmnt][edge_number], "state")
+                                sw_state = Int(solution_math["nw"][nw][edge_elmnt][edge_number]["state"]) == 0 ? true : false
                             end
                             mn_info = Dict(
                                 "ArCurveData.xvalue" => parse(Float64, nw)*data_math["nw"][nw]["time_elapsed"],
@@ -329,7 +334,7 @@ function transform_solution_ravens(
                             mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
                             mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
 
-                            for (nw, nw_data) in solution_math["nw"]
+                            for nw in sorted_nws
                                 mn_info = Dict(
                                     "ArCurveData.xvalue" => parse(Float64, nw)*data_math["nw"][nw]["time_elapsed"],
                                     "ArCurveData.DataValues" => Dict(
@@ -384,7 +389,7 @@ function transform_solution_ravens(
                     mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
                     mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
 
-                    for (nw, nw_data) in solution_math["nw"]
+                    for nw in sorted_nws
                         mn_info = Dict(
                             "ArCurveData.xvalue" => parse(Float64, nw)*data_math["nw"][nw]["time_elapsed"],
                             "ArCurveData.DataValues" => Dict(
@@ -458,7 +463,7 @@ function transform_solution_ravens(
                         mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
                         mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
 
-                        for (nw, nw_data) in solution_math["nw"]
+                        for nw in sorted_nws
                             mn_info = Dict(
                                 "ArCurveData.xvalue" => parse(Float64, nw)*data_math["nw"][nw]["time_elapsed"],
                                 "ArCurveData.DataValues" => Dict(
@@ -514,9 +519,9 @@ function transform_solution_ravens(
                     mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
                     mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
 
-                    for (nw, nw_data) in solution_math["nw"]
-                        if haskey(nw_data[node_elmnt][node_number], "status")
-                            elemtn_status = Int(nw_data[node_elmnt][node_number]["status"]) == 1 ? true : false
+                    for nw in sorted_nws
+                        if haskey(solution_math["nw"][nw][node_elmnt][node_number], "status")
+                            elemtn_status = Int(solution_math["nw"][nw][node_elmnt][node_number]["status"]) == 1 ? true : false
                         end
                         mn_info = Dict(
                             "ArCurveData.xvalue" => parse(Float64, nw)*data_math["nw"][nw]["time_elapsed"],
