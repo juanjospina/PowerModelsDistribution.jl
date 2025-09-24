@@ -34,6 +34,9 @@ function transform_solution_ravens(
         solution = solution_math
     end
 
+    # Get time_elapsed to compute time steps -- default is 1.0 hour.
+    time_elapsed = get(data_math, "time_elapsed", 1.0)
+
     # Create OptimalPowerFlow AnalysisResult Dictionary
     # TODO: read original JSON file, and add result to that JSON file (check if AnalysisResult exists before overwriting it)
     solution_ravens = Dict()
@@ -78,13 +81,12 @@ function transform_solution_ravens(
                 # Curve data
                 mn_data = Dict()
                 mn_data["AnalysisResultData.Curve"] = Dict()
-                # TODO: obtain this information from pmd_data_math["nw"]["1"]["time_elapsed"]
                 mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
                 mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
 
                 for (nw, nw_data) in solution_math["nw"]
                     mn_info = Dict(
-                        "ArCurveData.xvalue" => parse(Float64, nw),
+                        "ArCurveData.xvalue" => parse(Float64, nw)*data_math["nw"][nw]["time_elapsed"],
                         "ArCurveData.DataValues" => Dict(
                             "AvVoltage.v" => solution_math["nw"][nw]["bus"][node_number]["vm"][i]*solution_math["nw"][nw]["settings"]["voltage_scale_factor"],
                             "Ravens.cimObjectType" => "AvVoltage",
@@ -145,13 +147,12 @@ function transform_solution_ravens(
                 # Curve data
                 mn_data = Dict()
                 mn_data["AnalysisResultData.Curve"] = Dict()
-                # TODO: obtain this information from pmd_data_math["nw"]["1"]["time_elapsed"]
                 mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
                 mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
 
                 for (nw, nw_data) in solution_math["nw"]
                     mn_info = Dict(
-                        "ArCurveData.xvalue" => parse(Float64, nw),
+                        "ArCurveData.xvalue" => parse(Float64, nw)*data_math["nw"][nw]["time_elapsed"],
                         "ArCurveData.DataValues" => Dict(
                             "AvPowerFlow.p" => solution_math["nw"][nw]["transformer"][xfrmr_number]["pf"][i]*solution_math["nw"][nw]["settings"]["power_scale_factor"],
                             "AvPowerFlow.q" => solution_math["nw"][nw]["transformer"][xfrmr_number]["qf"][i]*solution_math["nw"][nw]["settings"]["power_scale_factor"],
@@ -199,13 +200,12 @@ function transform_solution_ravens(
                 # Curve data
                 mn_data = Dict()
                 mn_data["AnalysisResultData.Curve"] = Dict()
-                # TODO: obtain this information from pmd_data_math["nw"]["1"]["time_elapsed"]
                 mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
                 mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
 
                 for (nw, nw_data) in solution_math["nw"]
                     mn_info = Dict(
-                        "ArCurveData.xvalue" => parse(Float64, nw),
+                        "ArCurveData.xvalue" => parse(Float64, nw)*data_math["nw"][nw]["time_elapsed"],
                         "ArCurveData.DataValues" => Dict(
                             "AvStatus.inService" => xfrmr_status
                         ),
@@ -261,14 +261,13 @@ function transform_solution_ravens(
                         # Curve data
                         mn_data = Dict()
                         mn_data["AnalysisResultData.Curve"] = Dict()
-                        # TODO: obtain this information from pmd_data_math["nw"]["1"]["time_elapsed"]
                         mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
                         mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
 
                         for (nw, nw_data) in solution_math["nw"]
                             sw_state = Int(nw_data[edge_elmnt][edge_number]["state"]) == 0 ? true : false
                             mn_info = Dict(
-                                "ArCurveData.xvalue" => parse(Float64, nw),
+                                "ArCurveData.xvalue" => parse(Float64, nw)*data_math["nw"][nw]["time_elapsed"],
                                 "ArCurveData.DataValues" => Dict(
                                     "AvSwitch.open" => sw_state,
                                 ),
@@ -325,13 +324,12 @@ function transform_solution_ravens(
                             # Curve data
                             mn_data = Dict()
                             mn_data["AnalysisResultData.Curve"] = Dict()
-                            # TODO: obtain this information from pmd_data_math["nw"]["1"]["time_elapsed"]
                             mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
                             mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
 
                             for (nw, nw_data) in solution_math["nw"]
                                 mn_info = Dict(
-                                    "ArCurveData.xvalue" => parse(Float64, nw),
+                                    "ArCurveData.xvalue" => parse(Float64, nw)*data_math["nw"][nw]["time_elapsed"],
                                     "ArCurveData.DataValues" => Dict(
                                         "AvPowerFlow.p" => solution_math["nw"][nw][edge_elmnt][edge_number][p_flow_direction][i]*solution_math["nw"][nw]["settings"]["power_scale_factor"],
                                         "AvPowerFlow.q" => solution_math["nw"][nw][edge_elmnt][edge_number][q_flow_direction][i]*solution_math["nw"][nw]["settings"]["power_scale_factor"],
@@ -381,13 +379,12 @@ function transform_solution_ravens(
                     # Curve data
                     mn_data = Dict()
                     mn_data["AnalysisResultData.Curve"] = Dict()
-                    # TODO: obtain this information from pmd_data_math["nw"]["1"]["time_elapsed"]
                     mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
                     mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
 
                     for (nw, nw_data) in solution_math["nw"]
                         mn_info = Dict(
-                            "ArCurveData.xvalue" => parse(Float64, nw),
+                            "ArCurveData.xvalue" => parse(Float64, nw)*data_math["nw"][nw]["time_elapsed"],
                             "ArCurveData.DataValues" => Dict(
                                 "AvStatus.inService" => elemtn_status
                             ),
@@ -419,7 +416,7 @@ function transform_solution_ravens(
     end
 
     # Nodal elements (loads, gens)
-    node_elements = ["load", "gen"]
+    node_elements = ["load", "gen", "storage"]
     for node_elmnt in node_elements
 
         for (node_number, node_data) in get(solution, node_elmnt, Dict{Any,Dict{String,Any}}())
@@ -436,6 +433,9 @@ function transform_solution_ravens(
                 elseif node_elmnt == "gen"
                     p_key = "pg"
                     q_key = "qg"
+                elseif node_elmnt == "storage"
+                    p_key = "ps"
+                    q_key = "qs"
                 else
                     p_key = "p"
                     q_key = "q"
@@ -453,13 +453,12 @@ function transform_solution_ravens(
                         # Curve data
                         mn_data = Dict()
                         mn_data["AnalysisResultData.Curve"] = Dict()
-                        # TODO: obtain this information from pmd_data_math["nw"]["1"]["time_elapsed"]
                         mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
                         mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
 
                         for (nw, nw_data) in solution_math["nw"]
                             mn_info = Dict(
-                                "ArCurveData.xvalue" => parse(Float64, nw),
+                                "ArCurveData.xvalue" => parse(Float64, nw)*data_math["nw"][nw]["time_elapsed"],
                                 "ArCurveData.DataValues" => Dict(
                                     "AvPowerFlow.p" => solution_math["nw"][nw][node_elmnt][node_number][p_key][i]*solution_math["nw"][nw]["settings"]["power_scale_factor"],
                                     "AvPowerFlow.q" => solution_math["nw"][nw][node_elmnt][node_number][q_key][i]*solution_math["nw"][nw]["settings"]["power_scale_factor"],
@@ -510,14 +509,13 @@ function transform_solution_ravens(
                     # Curve data
                     mn_data = Dict()
                     mn_data["AnalysisResultData.Curve"] = Dict()
-                    # TODO: obtain this information from pmd_data_math["nw"]["1"]["time_elapsed"]
                     mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.xUnit"] = "UnitSymbol.h"
                     mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
 
                     for (nw, nw_data) in solution_math["nw"]
                         elemtn_status = Int(nw_data[node_elmnt][node_number]["status"]) == 1 ? true : false
                         mn_info = Dict(
-                            "ArCurveData.xvalue" => parse(Float64, nw),
+                            "ArCurveData.xvalue" => parse(Float64, nw)*data_math["nw"][nw]["time_elapsed"],
                             "ArCurveData.DataValues" => Dict(
                                 "AvStatus.inService" => elemtn_status
                             ),
