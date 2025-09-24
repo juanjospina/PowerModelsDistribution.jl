@@ -265,7 +265,9 @@ function transform_solution_ravens(
                         mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
 
                         for (nw, nw_data) in solution_math["nw"]
-                            sw_state = Int(nw_data[edge_elmnt][edge_number]["state"]) == 0 ? true : false
+                            if haskey(nw_data[edge_elmnt][edge_number], "state")
+                                sw_state = Int(nw_data[edge_elmnt][edge_number]["state"]) == 0 ? true : false
+                            end
                             mn_info = Dict(
                                 "ArCurveData.xvalue" => parse(Float64, nw)*data_math["nw"][nw]["time_elapsed"],
                                 "ArCurveData.DataValues" => Dict(
@@ -513,7 +515,9 @@ function transform_solution_ravens(
                     mn_data["AnalysisResultData.Curve"]["AnalysisResultCurve.CurveDatas"] = []
 
                     for (nw, nw_data) in solution_math["nw"]
-                        elemtn_status = Int(nw_data[node_elmnt][node_number]["status"]) == 1 ? true : false
+                        if haskey(nw_data[node_elmnt][node_number], "status")
+                            elemtn_status = Int(nw_data[node_elmnt][node_number]["status"]) == 1 ? true : false
+                        end
                         mn_info = Dict(
                             "ArCurveData.xvalue" => parse(Float64, nw)*data_math["nw"][nw]["time_elapsed"],
                             "ArCurveData.DataValues" => Dict(
